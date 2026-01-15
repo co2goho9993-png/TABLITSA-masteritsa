@@ -5,21 +5,30 @@ import { A3_WIDTH_MM, A3_HEIGHT_MM, MARGIN_MM, COLORS } from '../constants';
 import { formatRussianText } from './formatService';
 
 /**
- * World-class PDF Export Service with resilient font loading.
- * Professional-grade typography for A3 technical reports.
+ * World-class PDF Export Service with precise unit matching.
+ * Fixed dimensions for Adobe Illustrator compatibility (1 unit = 1 mm).
  */
 
 const FONT_SOURCES = {
   regular: [
     'https://cdn.jsdelivr.net/gh/googlefonts/roboto@master/src/hinted/RobotoCondensed-Regular.ttf',
-    'https://raw.githubusercontent.com/google/fonts/main/ofl/robotocondensed/static/RobotoCondensed-Regular.ttf',
-    'https://fonts.gstatic.com/s/robotocondensed/v25/ieVi2ZhD3EzW720cy7zA5V_v779Gva966A.ttf'
+    'https://raw.githubusercontent.com/google/fonts/main/ofl/robotocondensed/static/RobotoCondensed-Regular.ttf'
   ],
   bold: [
     'https://cdn.jsdelivr.net/gh/googlefonts/roboto@master/src/hinted/RobotoCondensed-Bold.ttf',
-    'https://raw.githubusercontent.com/google/fonts/main/ofl/robotocondensed/static/RobotoCondensed-Bold.ttf',
-    'https://fonts.gstatic.com/s/robotocondensed/v25/ieVj2ZhD3EzW720cy7zA5V_v779Gva968A96V-E.ttf'
+    'https://raw.githubusercontent.com/google/fonts/main/ofl/robotocondensed/static/RobotoCondensed-Bold.ttf'
   ]
+};
+
+// Precise constants matching the UI (TableEditor.tsx)
+const UI_UNITS = {
+  headerFontSize: 2.6, // mm
+  standardFontSize: 3.1, // mm
+  numericFontSize: 3.8, // mm
+  cellPadding: 0.8, // mm - slightly reduced for tighter fit
+  headerPadding: 0.6, // mm
+  borderWidth: 0.1, // mm
+  lineHeight: 1.05 // tight leading
 };
 
 async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
@@ -45,14 +54,12 @@ async function fetchWithFallback(urls: string[]): Promise<string> {
       const response = await fetch(url, { mode: 'cors', cache: 'default' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const buffer = await response.arrayBuffer();
-      if (buffer.byteLength < 5000) throw new Error('Font file suspiciously small');
       return await arrayBufferToBase64(buffer);
     } catch (e) {
-      console.warn(`Font load failed for ${url}:`, e);
       lastError = e;
     }
   }
-  throw new Error(`Failed to load font from all sources. Last error: ${lastError?.message || 'Unknown'}`);
+  throw new Error(`Failed to load font. ${lastError?.message}`);
 }
 
 export const exportToPDF = async (data: TableData) => {
@@ -62,28 +69,25 @@ export const exportToPDF = async (data: TableData) => {
       fetchWithFallback(FONT_SOURCES.bold)
     ]);
 
-    if (!regBase64 || !boldBase64) throw new Error("Font data is empty or invalid");
-
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
       format: 'a3',
-      compress: true
+      putOnlyUsedFonts: true,
+      floatPrecision: 16 // High precision for Illustrator
     });
 
     const fontName = 'RobotoCondensed';
-    const regFile = 'RobotoCondensed-Regular.ttf';
-    const boldFile = 'RobotoCondensed-Bold.ttf';
-    
-    doc.addFileToVFS(regFile, regBase64);
-    doc.addFileToVFS(boldFile, boldBase64);
-    doc.addFont(regFile, fontName, 'normal');
-    doc.addFont(boldFile, fontName, 'bold');
+    doc.addFileToVFS('RobotoCondensed-Regular.ttf', regBase64);
+    doc.addFileToVFS('RobotoCondensed-Bold.ttf', boldBase64);
+    doc.addFont('RobotoCondensed-Regular.ttf', fontName, 'normal');
+    doc.addFont('RobotoCondensed-Bold.ttf', fontName, 'bold');
     doc.setFont(fontName, 'normal');
 
     const margin = MARGIN_MM;
     const contentWidth = A3_WIDTH_MM - (margin * 2);
-    
+    const colWidthsMm = data.columns.map(col => (col.width / 100) * contentWidth);
+
     const hexToRgb = (hex: string) => {
       const bigint = parseInt(hex.replace('#', ''), 16);
       return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
@@ -94,150 +98,168 @@ export const exportToPDF = async (data: TableData) => {
     const totalBg = hexToRgb(COLORS.totalBg);
     const rowOddBg = hexToRgb(COLORS.rowOdd);
 
-    let currentY = margin + 30; 
-    const headerFontSize = 8.5; // Slightly reduced to ensure NO line breaks in headers
-    const bodyFontSize = 8.5;
-    const specialFontSize = 10;
+    let currentY = margin + 25; // Adjusted start position
 
-    const colWidthsMm = data.columns.map(col => (col.width / 100) * contentWidth);
+    const mmToPt = (mm: number) => mm * (72 / 25.4);
 
-    const renderCellText = (x: number, y: number, w: number, h: number, text: string, fontSize: number, align: 'left' | 'center', isBold: boolean) => {
+    const renderCellText = (
+      x: number, 
+      y: number, 
+      w: number, 
+      h: number, 
+      text: string, 
+      fontSizeMm: number, 
+      align: 'left' | 'center', 
+      isBold: boolean, 
+      colorRgb: number[] = [0, 0, 0]
+    ) => {
       doc.setFont(fontName, isBold ? 'bold' : 'normal');
-      doc.setFontSize(fontSize);
+      doc.setFontSize(mmToPt(fontSizeMm));
+      doc.setTextColor(colorRgb[0], colorRgb[1], colorRgb[2]);
       
-      const padding = 0.8; 
+      const padding = align === 'left' ? UI_UNITS.cellPadding : 0.2;
       const formatted = formatRussianText(text || '');
       
       const lines = doc.splitTextToSize(formatted, w - (padding * 2));
-      const lineHeight = fontSize * 0.352778 * 1.15;
-      const totalTextH = lines.length * lineHeight;
-      const startY = y + (h - totalTextH) / 2 + (fontSize * 0.352778) * 0.85;
+      const lineH = fontSizeMm * UI_UNITS.lineHeight;
+      const totalH = lines.length * lineH;
+      
+      // Precise vertical centering
+      let startY = y + (h - totalH) / 2 + (fontSizeMm * 0.78); // Adjusted baseline for Roboto Condensed
 
       lines.forEach((line: string, i: number) => {
         const tw = doc.getTextWidth(line);
         const tx = align === 'center' ? x + (w / 2) - (tw / 2) : x + padding;
-        doc.text(line, tx, startY + (i * lineHeight));
+        doc.text(line, tx, startY + (i * lineH));
       });
     };
 
     const drawHeader = () => {
       doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-      doc.setLineWidth(0.05); // Hairline accuracy
+      doc.setLineWidth(UI_UNITS.borderWidth);
       
-      const h1 = 12; 
-      const h2 = 8;
+      const h1 = 10; // Slightly tighter header
+      const h2 = 7;
       const totalH = h1 + h2;
+      const white = [255, 255, 255];
 
       doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
       doc.rect(margin, currentY, contentWidth, totalH, 'F');
 
       let curX = margin;
-      
       for (let i = 0; i < 8; i++) {
         doc.rect(curX, currentY, colWidthsMm[i], totalH, 'D');
-        renderCellText(curX, currentY, colWidthsMm[i], totalH, data.columns[i].title, headerFontSize, 'center', true);
+        renderCellText(curX, currentY, colWidthsMm[i], totalH, data.columns[i].title, UI_UNITS.headerFontSize, 'center', true, white);
         curX += colWidthsMm[i];
       }
 
       const groupedW = colWidthsMm[8] + colWidthsMm[9];
       doc.rect(curX, currentY, groupedW, h1, 'D');
-      renderCellText(curX, currentY, groupedW, h1, 'Мощность ОПН', headerFontSize, 'center', true);
+      renderCellText(curX, currentY, groupedW, h1, 'Мощность ОПН', UI_UNITS.headerFontSize, 'center', true, white);
       
       doc.rect(curX, currentY + h1, colWidthsMm[8], h2, 'D');
-      renderCellText(curX, currentY + h1, colWidthsMm[8], h2, data.columns[8].title, headerFontSize, 'center', true);
+      renderCellText(curX, currentY + h1, colWidthsMm[8], h2, data.columns[8].title, UI_UNITS.headerFontSize, 'center', true, white);
       
       doc.rect(curX + colWidthsMm[8], currentY + h1, colWidthsMm[9], h2, 'D');
-      renderCellText(curX + colWidthsMm[8], currentY + h1, colWidthsMm[9], h2, data.columns[9].title, headerFontSize, 'center', true);
+      renderCellText(curX + colWidthsMm[8], currentY + h1, colWidthsMm[9], h2, data.columns[9].title, UI_UNITS.headerFontSize, 'center', true, white);
       
       curX += groupedW;
-
       for (let i = 10; i < 13; i++) {
         doc.rect(curX, currentY, colWidthsMm[i], totalH, 'D');
-        renderCellText(curX, currentY, colWidthsMm[i], totalH, data.columns[i].title, headerFontSize, 'center', true);
+        renderCellText(curX, currentY, colWidthsMm[i], totalH, data.columns[i].title, UI_UNITS.headerFontSize, 'center', true, white);
         curX += colWidthsMm[i];
       }
-
       currentY += totalH;
     };
 
-    const drawRow = (row: TableRow, isTotal: boolean, bodyIdx: number) => {
-      let maxH = 8;
+    const calculateRowHeight = (row: TableRow, bIdx: number) => {
+      let maxH = 6.5; // Minimum row height matching UI's "tight" look
       row.cells.forEach((cell, i) => {
-        const fs = cell.style?.fontSize ? cell.style.fontSize * 2.83 : (i >= 7 ? specialFontSize : bodyFontSize);
-        const val = (i === 0 && cell.value === 'AUTO') ? (bodyIdx + 1).toString() : cell.value;
-        const lines = doc.splitTextToSize(formatRussianText(val || ''), colWidthsMm[i] - 2);
-        const h = lines.length * (fs * 0.352778 * 1.15) + 4;
+        const isNumeric = i >= 7;
+        const fs = cell.style?.fontSize || (isNumeric ? UI_UNITS.numericFontSize : UI_UNITS.standardFontSize);
+        const val = (i === 0 && cell.value === 'AUTO') ? (bIdx + 1).toString() : cell.value;
+        const lines = doc.splitTextToSize(formatRussianText(val || ''), colWidthsMm[i] - (UI_UNITS.cellPadding * 2));
+        const h = lines.length * (fs * UI_UNITS.lineHeight) + (UI_UNITS.cellPadding * 1.5);
         if (h > maxH) maxH = h;
       });
+      return maxH;
+    };
+
+    const drawRow = (row: TableRow, isTotal: boolean, bodyIdx: number) => {
+      const rowHeight = calculateRowHeight(row, bodyIdx);
+
+      // Handle page break
+      if (currentY + rowHeight > A3_HEIGHT_MM - margin - 5) {
+        doc.addPage();
+        currentY = margin + 15;
+        drawHeader();
+      }
 
       if (isTotal) {
         doc.setFillColor(totalBg[0], totalBg[1], totalBg[2]);
-        doc.rect(margin, currentY, contentWidth, maxH, 'F');
+        doc.rect(margin, currentY, contentWidth, rowHeight, 'F');
       } else if (bodyIdx % 2 !== 0) {
         doc.setFillColor(rowOddBg[0], rowOddBg[1], rowOddBg[2]);
-        doc.rect(margin, currentY, contentWidth, maxH, 'F');
+        doc.rect(margin, currentY, contentWidth, rowHeight, 'F');
       }
 
       let curX = margin;
       doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-      doc.setLineWidth(0.05); 
+      doc.setLineWidth(UI_UNITS.borderWidth);
 
       row.cells.forEach((cell, i) => {
-        doc.rect(curX, currentY, colWidthsMm[i], maxH, 'D');
+        doc.rect(curX, currentY, colWidthsMm[i], rowHeight, 'D');
         const isNumeric = i >= 7;
-        const fs = cell.style?.fontSize ? cell.style.fontSize * 2.83 : (isNumeric ? specialFontSize : bodyFontSize);
+        const fs = cell.style?.fontSize || (isNumeric ? UI_UNITS.numericFontSize : UI_UNITS.standardFontSize);
         const val = (i === 0 && cell.value === 'AUTO') ? (bodyIdx + 1).toString() : cell.value;
         const isBold = isTotal || isNumeric || cell.style?.fontWeight === 700;
+        const textColor = isTotal ? [255, 255, 255] : [0, 0, 0];
         
-        doc.setTextColor(isTotal ? 255 : 0);
-
         if (i === 0 && !isTotal) {
           const circleCol = hexToRgb(cell.style?.circleColor || '#3b82f6');
           doc.setFillColor(circleCol[0], circleCol[1], circleCol[2]);
-          doc.circle(curX + colWidthsMm[i] / 2, currentY + maxH / 2, 2.5, 'F');
-          doc.setTextColor(255);
-          renderCellText(curX, currentY, colWidthsMm[i], maxH, val, fs * 0.9, 'center', true);
+          const radius = 1.8;
+          doc.circle(curX + colWidthsMm[i] / 2, currentY + rowHeight / 2, radius, 'F');
+          renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs * 0.85, 'center', true, [255, 255, 255]);
         } else {
           const align = [1, 2, 4, 5].includes(i) ? 'left' : 'center';
-          renderCellText(curX, currentY, colWidthsMm[i], maxH, val, fs, align, isBold);
+          renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs, align, isBold, textColor);
         }
         curX += colWidthsMm[i];
       });
 
-      currentY += maxH;
+      currentY += rowHeight;
     };
 
-    doc.setTextColor(0);
+    // Header Title Area
+    doc.setTextColor(0, 0, 0);
     doc.setFont(fontName, 'bold');
-    doc.setFontSize(18);
-    doc.text('ПРИЛОЖЕНИЕ № 1', margin, margin + 12);
-    doc.setFontSize(11);
-    doc.text('ВЕДОМОСТЬ ОБЪЕКТОВ МОДЕРНИЗАЦИИ', margin, margin + 18);
+    doc.setFontSize(mmToPt(5));
+    doc.text('ПРИЛОЖЕНИЕ № 1', margin, margin + 8);
+    doc.setFontSize(mmToPt(3.5));
+    doc.text('ВЕДОМОСТЬ ОБЪЕКТОВ МОДЕРНИЗАЦИИ', margin, margin + 13);
     
-    doc.setFontSize(8);
     doc.setFillColor(0, 0, 0);
-    doc.rect(A3_WIDTH_MM - margin - 22, margin + 5, 22, 5, 'F');
-    doc.setTextColor(255);
-    doc.text('ФОРМАТ А3', A3_WIDTH_MM - margin - 20, margin + 8.5);
+    doc.rect(A3_WIDTH_MM - margin - 18, margin, 18, 4, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(mmToPt(2.5));
+    doc.text('ФОРМАТ А3', A3_WIDTH_MM - margin - 16, margin + 2.8);
 
     drawHeader();
 
     let bIdx = 0;
+    // We sort or separate Total row to bottom if that's preferred, but here we follow UI order.
+    // Usually total is first or last. In constants it is first.
     data.rows.forEach(row => {
-      if (currentY > A3_HEIGHT_MM - 25) {
-        doc.addPage();
-        currentY = margin + 25;
-        doc.setFont(fontName, 'normal');
-        drawHeader();
-      }
       drawRow(row, !!row.isTotal, row.isTotal ? -1 : bIdx++);
     });
 
-    doc.setFontSize(8);
-    doc.setTextColor(150);
+    // Page numbers and footer
+    doc.setTextColor(180, 180, 180);
     doc.setFont(fontName, 'normal');
-    doc.text('Лист 1 из 1', contentWidth / 2 + margin, A3_HEIGHT_MM - margin, { align: 'center' });
-    doc.text('Vector Studio • (A3 420x297mm)', margin, A3_HEIGHT_MM - margin);
+    doc.setFontSize(mmToPt(2.5));
+    doc.text('Лист 1 из 1', A3_WIDTH_MM - margin, A3_HEIGHT_MM - margin + 2, { align: 'right' });
+    doc.text('Vector Studio • (A3 420x297mm)', margin, A3_HEIGHT_MM - margin + 2);
 
     doc.save('ведомость_модернизации_А3.pdf');
   } catch (error) {

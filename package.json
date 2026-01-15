@@ -1,5 +1,5 @@
 {
-  "name": "таблица-мастерица",
+  "name": "copy-of-таблица-мастерица",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,7 +12,8 @@
     "lucide-react": "^0.562.0",
     "react-dom": "^19.2.3",
     "jspdf": "^4.0.0",
-    "react": "^19.2.3"
+    "react": "^19.2.3",
+    "xlsx": "0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

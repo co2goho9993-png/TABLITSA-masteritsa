@@ -44,15 +44,15 @@ export const TableEditor: React.FC<TableEditorProps> = ({
   const borderWidth = 0.1 * pxPerMm; 
   const controlSize = 5.0 * pxPerMm;
 
-  // Sync textarea height with its content to maintain vertical centering via vertical-align: middle
   useEffect(() => {
     if (selection && activeInputRef.current) {
       const textarea = activeInputRef.current;
       textarea.focus();
       textarea.style.height = '0px';
       textarea.style.height = `${textarea.scrollHeight}px`;
-      const val = textarea.value;
-      textarea.setSelectionRange(val.length, val.length);
+      
+      // Выделяем весь текст для удобства быстрой перезаписи (как в Excel)
+      textarea.select();
     }
   }, [selection?.rowIdx, selection?.colIdx]);
 
@@ -239,8 +239,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                           verticalAlign: 'middle',
                           borderWidth: `${borderWidth}px`,
                           color: row.isTotal ? COLORS.totalText : (isSelected ? '#f0f0f0' : COLORS.text),
-                          padding: `${cellPadding}px`, // Always keep padding to maintain alignment
-                          hyphens: isNumericCol ? 'none' : 'auto',
+                          padding: `${cellPadding}px`, 
                           whiteSpace: isPeriodCol ? 'nowrap' : 'normal',
                           wordBreak: isPeriodCol ? 'keep-all' : 'break-word',
                           overflow: 'visible'
@@ -267,13 +266,12 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                             value={cellValue}
                             onChange={(e) => {
                               onUpdateCell(rIdx, cIdx, e.target.value);
-                              // Auto-resize textarea height
                               e.target.style.height = '0px';
                               e.target.style.height = `${e.target.scrollHeight}px`;
                             }}
                             className="w-full bg-transparent outline-none resize-none overflow-hidden font-inherit border-none caret-blue-400 block"
                             style={{
-                              padding: '0px', // We use parent td padding
+                              padding: '0px',
                               fontSize: `${currentFontSize}px`,
                               fontWeight: 'inherit',
                               textAlign: 'inherit',
