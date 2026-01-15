@@ -2,7 +2,7 @@
 import { TableData } from './types';
 
 export const COLORS = {
-  headerBg: '#B8CCE4', // Specific reference light blue
+  headerBg: '#9bc1e4', // Updated to the requested color
   border: '#4D4D4D',   // 70% black saturation
   text: '#000000',
   totalBg: '#BDBDBD', // Lightened gray for TOTAL row
@@ -16,10 +16,10 @@ export const COLORS = {
 export const INITIAL_COLUMNS = [
   { id: 'c1', title: '№\nп/п', width: 2.5 },
   { id: 'c2', title: 'Муниципальное образование', width: 9.0 },
-  { id: 'c3', title: 'Населенный пункт', width: 7.0 }, // Was 10.0, reduced by 30%
+  { id: 'c3', title: 'Населенный пункт', width: 7.0 }, 
   { id: 'c4', title: 'Принадлежность\nк ОНП', width: 6.5 },
-  { id: 'c5', title: 'Наименование мероприятия', width: 27.9 }, // Increased to balance 100%
-  { id: 'c6', title: 'Тип мероприятия', width: 8.0 }, // Was 7.6, increased by 5% (approx)
+  { id: 'c5', title: 'Наименование мероприятия', width: 27.9 }, 
+  { id: 'c6', title: 'Тип мероприятия', width: 8.0 }, 
   { id: 'c7', title: 'Вид объекта', width: 5.6 },
   { id: 'c8', title: 'Протяженность,\nкм', width: 6.0 },
   { id: 'c9', title: '(кол-во)', width: 4.0 },
@@ -41,11 +41,11 @@ export const INITIAL_DATA: TableData = {
     {
       id: 'total',
       isTotal: true,
-      cells: createCells(['', 'ВСЕГО', '', '', '', '', '', '0,0', '5,1', 'МВт', '2024–2030', '153 182,6', '–'])
+      cells: createCells(['', 'ВСЕГО', '', '', '', '', '', '0', '5,1', 'МВт', '2024–2030', '153 182,6', ''])
     },
     {
       id: 'r1',
-      cells: createCells(['AUTO', 'Станично-Луганский муниципальный округ', 'пгт. Станица Луганская', 'Да', 'Разработка проектной документации и замена оборудования котельной №1.', 'Капитальный ремонт', 'ОПН', '–', '0,8', 'МВт', '2024', '26 000,0', '1,2'])
+      cells: createCells(['AUTO', 'Станично-Луганский муниципальный округ', 'пгт. Станица Луганская', 'Да', 'Разработка проектной документации и замена оборудования котельной №1.', 'Капитальный ремонт', 'ОПН', '–', '0,8', 'МВт', '2024', '26 000', '1,2'])
     },
     {
       id: 'r2',
