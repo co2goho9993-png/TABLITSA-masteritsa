@@ -3,6 +3,7 @@ export interface TableCellStyle {
   fontSize?: number;
   fontWeight?: string | number;
   circleColor?: string;
+  circleSize?: number;
 }
 
 export interface TableCell {

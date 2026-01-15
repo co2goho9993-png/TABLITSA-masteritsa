@@ -69,27 +69,32 @@ const App: React.FC = () => {
       let nextRow = rowIdx;
       let nextCol = colIdx;
       let prevent = false;
-      switch (e.key) {
-        case 'ArrowUp': nextRow = Math.max(0, rowIdx - 1); prevent = true; break;
-        case 'ArrowDown': nextRow = Math.min(rowCount - 1, rowIdx + 1); prevent = true; break;
-        case 'ArrowLeft': nextCol = Math.max(0, colIdx - 1); prevent = true; break;
-        case 'ArrowRight': nextCol = Math.min(colCount - 1, colIdx + 1); prevent = true; break;
-        case 'Tab':
-          if (e.shiftKey) {
-            if (colIdx > 0) nextCol = colIdx - 1;
-            else if (rowIdx > 0) { nextRow = rowIdx - 1; nextCol = colCount - 1; }
-          } else {
-            if (colIdx < colCount - 1) nextCol = colIdx + 1;
-            else if (rowIdx < rowCount - 1) { nextRow = rowIdx + 1; nextCol = 0; }
-          }
-          prevent = true; break;
-        case 'Enter':
-          if (!e.shiftKey) { nextRow = Math.min(rowCount - 1, rowIdx + 1); prevent = true; }
-          else { nextRow = Math.max(0, rowIdx - 1); prevent = true; }
-          break;
-        default: return;
+
+      if (e.shiftKey) {
+        switch (e.key) {
+          case 'ArrowUp': 
+            nextRow = Math.max(0, rowIdx - 1); 
+            prevent = true; 
+            break;
+          case 'ArrowDown': 
+            nextRow = Math.min(rowCount - 1, rowIdx + 1); 
+            prevent = true; 
+            break;
+          case 'ArrowLeft': 
+            nextCol = Math.max(0, colIdx - 1); 
+            prevent = true; 
+            break;
+          case 'ArrowRight': 
+            nextCol = Math.min(colCount - 1, colIdx + 1); 
+            prevent = true; 
+            break;
+        }
       }
-      if (prevent) { e.preventDefault(); setSelection({ rowIdx: nextRow, colIdx: nextCol }); }
+
+      if (prevent) { 
+        e.preventDefault(); 
+        setSelection({ rowIdx: nextRow, colIdx: nextCol }); 
+      }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
@@ -172,7 +177,6 @@ const App: React.FC = () => {
       }
       if (headerRowIdx === -1) return;
 
-      // Find real data start (skip sub-headers)
       let dataRowsStartIdx = headerRowIdx + 1;
       while (dataRowsStartIdx < allRowsRaw.length) {
         const row = allRowsRaw[dataRowsStartIdx];
@@ -203,12 +207,18 @@ const App: React.FC = () => {
           cells: data.columns.map((_, cIdx) => {
             let val = row[cIdx]?.toString() || "";
             val = cleanText(val);
+
+            // Rule for Column 4 (index 3) capitalization
+            if (cIdx === 3) {
+              if (val.toLowerCase() === 'да') val = 'Да';
+              if (val.toLowerCase() === 'нет') val = 'Нет';
+            }
+
             if (NUMERIC_COLUMNS.includes(cIdx)) val = formatToFixed1(val);
             
-            // Prevention of duplication in population coverage
             if (cIdx === 12) {
               const costVal = formatToFixed1(row[11]?.toString() || "");
-              if (val === costVal || val === "2022") val = ""; // Ignore years or duplicated costs
+              if (val === costVal || val === "2022") val = "";
               const cleanVal = val.trim();
               const isMissing = !cleanVal || cleanVal === '0' || cleanVal === '0,0' || cleanVal === '–';
               if (isMissing) val = isTotal ? "" : "–";
@@ -229,6 +239,13 @@ const App: React.FC = () => {
 
   const handleUpdateCell = (rowIdx: number, colIdx: number, value: string) => {
     let val = cleanText(value);
+    
+    // Rule for Column 4 (index 3) capitalization
+    if (colIdx === 3) {
+      if (val.toLowerCase() === 'да') val = 'Да';
+      if (val.toLowerCase() === 'нет') val = 'Нет';
+    }
+
     const isTotal = data.rows[rowIdx].isTotal;
     if (NUMERIC_COLUMNS.includes(colIdx)) val = formatToFixed1(val);
     if (colIdx === 12) {
@@ -243,17 +260,45 @@ const App: React.FC = () => {
   const handleUpdateCellStyle = (rowIdx: number, colIdx: number, style: TableCellStyle) => {
     const newData = { ...data };
     const currentCell = newData.rows[rowIdx].cells[colIdx];
-    if (style.fontSize !== undefined) {
-      const isNumericCol = (idx: number) => idx >= 7;
-      const getBaseSize = (idx: number) => isNumericCol(idx) ? 3.8 : 3.1;
-      const oldFontSize = currentCell.style?.fontSize || getBaseSize(colIdx);
-      const ratio = style.fontSize / oldFontSize;
-      newData.rows.forEach(r => r.cells.forEach((c, idx) => {
-        const base = c.style?.fontSize || getBaseSize(idx);
-        c.style = { ...c.style, fontSize: base * ratio };
-      }));
+
+    if (colIdx === 0) {
+      if (style.fontSize !== undefined) {
+        newData.rows.forEach(r => {
+          if (!r.isTotal) {
+            r.cells[0].style = { ...r.cells[0].style, fontSize: style.fontSize };
+          }
+        });
+      }
+      if (style.circleSize !== undefined) {
+        newData.rows.forEach(r => {
+          if (!r.isTotal) {
+            r.cells[0].style = { ...r.cells[0].style, circleSize: style.circleSize };
+          }
+        });
+      }
+      if (style.fontWeight !== undefined) {
+        newData.rows.forEach(r => {
+          if (!r.isTotal) {
+            r.cells[0].style = { ...r.cells[0].style, fontWeight: style.fontWeight };
+          }
+        });
+      }
+    } else {
+      if (style.fontSize !== undefined) {
+        const isNumericCol = (idx: number) => idx >= 7;
+        const getBaseSize = (idx: number) => isNumericCol(idx) ? 3.8 : 3.1;
+        const oldFontSize = currentCell.style?.fontSize || getBaseSize(colIdx);
+        const ratio = style.fontSize / oldFontSize;
+        newData.rows.forEach(r => r.cells.forEach((c, idx) => {
+          if (idx === 0) return;
+          const base = c.style?.fontSize || getBaseSize(idx);
+          c.style = { ...c.style, fontSize: base * ratio };
+        }));
+      }
+      if (style.fontWeight !== undefined) {
+        currentCell.style = { ...currentCell.style, fontWeight: style.fontWeight };
+      }
     }
-    if (style.fontWeight !== undefined) currentCell.style = { ...currentCell.style, fontWeight: style.fontWeight };
     setData({ ...newData });
   };
 
@@ -271,16 +316,6 @@ const App: React.FC = () => {
       onMouseUp={() => { setIsDragging(false); if (containerRef.current) containerRef.current.style.cursor = isSpacePressed ? 'grab' : 'auto'; }}>
         <div className="bg-white shadow-2xl absolute left-1/2 top-1/2 flex flex-col origin-center"
           style={{ width: `${A3_WIDTH_MM * currentPxPerMm}px`, height: `${A3_HEIGHT_MM * currentPxPerMm}px`, padding: `${MARGIN_MM * currentPxPerMm}px`, transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))` }}>
-          <div className="flex justify-between items-start border-black border-b-[3px] pb-4" style={{ marginBottom: `${4 * currentPxPerMm}px`, borderBottomWidth: `${0.8 * currentPxPerMm}px` }}>
-             <div className="flex flex-col">
-               <span className="font-bold uppercase tracking-[0.1em] text-black" style={{ fontSize: `${6 * currentPxPerMm}px` }}>Приложение № 1</span>
-               <span className="text-gray-500 font-bold uppercase tracking-tight" style={{ fontSize: `${4 * currentPxPerMm}px` }}>ВЕДОМОСТЬ ОБЪЕКТОВ МОДЕРНИЗАЦИИ</span>
-             </div>
-             <div className="text-right flex flex-col items-end">
-               <span className="bg-black text-white rounded-sm font-bold uppercase" style={{ fontSize: `${3 * currentPxPerMm}px`, padding: `${0.5 * currentPxPerMm}px ${2 * currentPxPerMm}px` }}>ФОРМАТ А3</span>
-               <span className="mt-2 text-gray-400 font-bold tracking-widest uppercase" style={{ fontSize: `${2.5 * currentPxPerMm}px` }}>Vector Studio Editor</span>
-             </div>
-          </div>
           <div className="w-full flex-1 relative overflow-visible">
             <TableEditor data={data} selection={selection} onSelect={(r, c) => setSelection({ rowIdx: r, colIdx: c })} onUpdateCell={handleUpdateCell} pxPerMm={currentPxPerMm}
               onResizeColumn={(idx, delta) => {
@@ -311,10 +346,6 @@ const App: React.FC = () => {
                 setData({ columns: cols, rows }); setSelection(null);
               }}
             />
-          </div>
-          <div className="pt-2 flex justify-between items-center border-gray-100 border-t" style={{ marginTop: `${4 * currentPxPerMm}px`, borderTopWidth: `${0.5 * currentPxPerMm}px` }}>
-             <div className="font-bold text-gray-300 uppercase tracking-[0.2em]" style={{ fontSize: `${3 * currentPxPerMm}px` }}>Vector Studio • (A3 420x297mm)</div>
-             <div className="flex items-center text-gray-400 uppercase font-bold" style={{ fontSize: `${3 * currentPxPerMm}px`, gap: `${5 * currentPxPerMm}px` }}><span>Лист 1</span><span>Всего листов 1</span></div>
           </div>
         </div>
         <div className="absolute top-8 left-8 bg-black/95 backdrop-blur-3xl px-5 py-3 rounded-2xl border border-white/10 text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-4 shadow-2xl pointer-events-none">

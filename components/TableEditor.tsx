@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { TableData, Selection } from '../types';
-import { COLORS, A3_WIDTH_MM, MARGIN_MM } from '../constants';
+import { COLORS, A3_WIDTH_MM, MARGIN_MM, CIRCLE_PALETTE } from '../constants';
 import { formatRussianText } from '../services/formatService';
 import { Plus, Trash2, X } from 'lucide-react';
 
@@ -32,6 +32,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
 }) => {
   const activeInputRef = useRef<HTMLTextAreaElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
+  const colorPickerRef = useRef<HTMLDivElement>(null);
   const [resizingColIdx, setResizingColIdx] = useState<number | null>(null);
   const [colorPickerAnchor, setColorPickerAnchor] = useState<{ rowIdx: number, x: number, y: number } | null>(null);
   const startXRef = useRef(0);
@@ -39,7 +40,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
   const baseHeaderFontSize = 2.6 * pxPerMm; 
   const standardFontSize = 3.1 * pxPerMm;
   const largerFontSize = 3.8 * pxPerMm; 
-  const cellPadding = 1.0 * pxPerMm; 
+  const cellPadding = 0.7 * pxPerMm;
   const headerPadding = 0.6 * pxPerMm; 
   const borderWidth = 0.1 * pxPerMm; 
   const controlSize = 5.0 * pxPerMm;
@@ -50,11 +51,21 @@ export const TableEditor: React.FC<TableEditorProps> = ({
       textarea.focus();
       textarea.style.height = '0px';
       textarea.style.height = `${textarea.scrollHeight}px`;
-      
-      // Выделяем весь текст для удобства быстрой перезаписи (как в Excel)
       textarea.select();
     }
   }, [selection?.rowIdx, selection?.colIdx]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (colorPickerAnchor && colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
+        setColorPickerAnchor(null);
+      }
+    };
+    if (colorPickerAnchor) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [colorPickerAnchor]);
 
   const handleMouseDownResizer = (e: React.MouseEvent, colIdx: number) => {
     e.stopPropagation();
@@ -214,7 +225,6 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                 >
                   {row.cells.map((cell, cIdx) => {
                     const isSelected = selection?.rowIdx === rIdx && selection?.colIdx === cIdx;
-                    const isTextCol = [1, 2, 4, 5].includes(cIdx);
                     const isNumericCol = cIdx >= 7;
                     const isPeriodCol = cIdx === 10;
                     const isFirstCol = cIdx === 0 && !row.isTotal;
@@ -222,8 +232,12 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                     const cellValue = isFirstCol && cell.value === 'AUTO' ? getRowNumber(rIdx).toString() : cell.value;
                     
                     let currentFontSize = (cell.style?.fontSize ? cell.style.fontSize * pxPerMm : (isNumericCol ? largerFontSize : standardFontSize));
+                    const currentCircleSize = (cell.style?.circleSize ? cell.style.circleSize * pxPerMm : currentFontSize * 1.6);
                     const fontWeight = cell.style?.fontWeight || (isNumericCol || row.isTotal ? '700' : '400');
                     
+                    // Column 5 (index 4) is left-aligned, others are center
+                    const textAlign = cIdx === 4 ? 'left' : 'center';
+
                     return (
                       <td
                         key={cell.id}
@@ -235,7 +249,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                           borderColor: COLORS.border,
                           fontSize: `${currentFontSize}px`,
                           fontWeight: fontWeight,
-                          textAlign: isTextCol ? 'left' : 'center',
+                          textAlign: textAlign, 
                           verticalAlign: 'middle',
                           borderWidth: `${borderWidth}px`,
                           color: row.isTotal ? COLORS.totalText : (isSelected ? '#f0f0f0' : COLORS.text),
@@ -249,12 +263,13 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                           <div className="flex items-center justify-center h-full w-full">
                              <div 
                                 onClick={(e) => handleCircleClick(e, rIdx)}
-                                className="rounded-full flex items-center justify-center font-bold text-white shadow-sm hover:scale-110 transition-transform cursor-pointer"
+                                className="rounded-full flex items-center justify-center font-bold shadow-sm hover:scale-110 transition-transform cursor-pointer leading-none"
                                 style={{ 
-                                  backgroundColor: cell.style?.circleColor || '#3b82f6',
-                                  width: `${4.0 * pxPerMm}px`,
-                                  height: `${4.0 * pxPerMm}px`,
-                                  fontSize: `${currentFontSize * 0.85}px`
+                                  backgroundColor: cell.style?.circleColor || '#1c9ad6',
+                                  width: `${currentCircleSize}px`,
+                                  height: `${currentCircleSize}px`,
+                                  fontSize: `${currentFontSize}px`,
+                                  color: ['#f1a98c', '#f5d38f'].includes((cell.style?.circleColor || '').toLowerCase()) ? '#000000' : '#FFFFFF'
                                 }}
                              >
                                {cellValue}
@@ -264,6 +279,11 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                           <textarea
                             ref={activeInputRef}
                             value={cellValue}
+                            onKeyDown={(e) => {
+                              if (e.key === ' ' || e.key === 'Enter') {
+                                e.stopPropagation();
+                              }
+                            }}
                             onChange={(e) => {
                               onUpdateCell(rIdx, cIdx, e.target.value);
                               e.target.style.height = '0px';
@@ -320,27 +340,33 @@ export const TableEditor: React.FC<TableEditorProps> = ({
         
         {colorPickerAnchor && (
           <div 
-            className="fixed bg-black/95 backdrop-blur-2xl p-4 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-white/15 flex gap-3 z-[200]"
+            ref={colorPickerRef}
+            className="fixed bg-[#1a1a1a] backdrop-blur-2xl p-5 rounded-2xl shadow-[0_25px_70px_-15px_rgba(0,0,0,0.8)] border border-white/10 flex flex-col gap-4 z-[200]"
             style={{ 
               left: `${colorPickerAnchor.x}px`, 
               top: `${colorPickerAnchor.y}px`,
-              transform: 'translate(-50%, 10px)'
+              transform: 'translate(-50%, 15px)',
+              width: '320px'
             }}
           >
-            {COLORS.circleColors.map(color => (
-              <button
-                key={color}
-                onClick={() => handleColorSelect(color)}
-                className="w-8 h-8 rounded-full border border-white/20 hover:scale-125 transition-all shadow-inner active:scale-95"
-                style={{ backgroundColor: color }}
-              />
-            ))}
-            <button 
-              onClick={(e) => { e.stopPropagation(); setColorPickerAnchor(null); }}
-              className="ml-2 text-white/50 hover:text-white transition-colors"
-            >
-              <X size={20} />
-            </button>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 mb-1">Палитра категорий</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              {CIRCLE_PALETTE.map(item => (
+                <button
+                  key={item.color}
+                  onClick={() => handleColorSelect(item.color)}
+                  className="flex items-center gap-3 group/btn text-left hover:bg-white/5 p-1 rounded-lg transition-colors"
+                >
+                  <div 
+                    className="w-6 h-6 rounded-full border border-white/10 group-hover/btn:scale-110 transition-transform shadow-md"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="text-[11px] font-bold text-gray-300 group-hover/btn:text-white transition-colors leading-none">
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

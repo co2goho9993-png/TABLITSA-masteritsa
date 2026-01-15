@@ -6,7 +6,6 @@ import { formatRussianText } from './formatService';
 
 /**
  * World-class PDF Export Service with precise unit matching.
- * Fixed dimensions for Adobe Illustrator compatibility (1 unit = 1 mm).
  */
 
 const FONT_SOURCES = {
@@ -20,15 +19,14 @@ const FONT_SOURCES = {
   ]
 };
 
-// Precise constants matching the UI (TableEditor.tsx)
 const UI_UNITS = {
-  headerFontSize: 2.6, // mm
-  standardFontSize: 3.1, // mm
-  numericFontSize: 3.8, // mm
-  cellPadding: 0.8, // mm - slightly reduced for tighter fit
-  headerPadding: 0.6, // mm
-  borderWidth: 0.1, // mm
-  lineHeight: 1.05 // tight leading
+  headerFontSize: 3.1, // Увеличено с 2.6 до 3.1 для фиксации и читаемости
+  standardFontSize: 3.1, 
+  numericFontSize: 3.8, 
+  cellPadding: 0.8, // Немного увеличен отступ для лучшей читаемости
+  headerPadding: 0.6, 
+  borderWidth: 0.1, 
+  lineHeight: 1.05 
 };
 
 async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
@@ -74,7 +72,7 @@ export const exportToPDF = async (data: TableData) => {
       unit: 'mm',
       format: 'a3',
       putOnlyUsedFonts: true,
-      floatPrecision: 16 // High precision for Illustrator
+      floatPrecision: 16
     });
 
     const fontName = 'RobotoCondensed';
@@ -98,7 +96,7 @@ export const exportToPDF = async (data: TableData) => {
     const totalBg = hexToRgb(COLORS.totalBg);
     const rowOddBg = hexToRgb(COLORS.rowOdd);
 
-    let currentY = margin + 25; // Adjusted start position
+    let currentY = margin; // Начинаем таблицу от верхней границы поля
 
     const mmToPt = (mm: number) => mm * (72 / 25.4);
 
@@ -124,8 +122,7 @@ export const exportToPDF = async (data: TableData) => {
       const lineH = fontSizeMm * UI_UNITS.lineHeight;
       const totalH = lines.length * lineH;
       
-      // Precise vertical centering
-      let startY = y + (h - totalH) / 2 + (fontSizeMm * 0.78); // Adjusted baseline for Roboto Condensed
+      let startY = y + (h - totalH) / 2 + (fontSizeMm * 0.78);
 
       lines.forEach((line: string, i: number) => {
         const tw = doc.getTextWidth(line);
@@ -138,8 +135,8 @@ export const exportToPDF = async (data: TableData) => {
       doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
       doc.setLineWidth(UI_UNITS.borderWidth);
       
-      const h1 = 10; // Slightly tighter header
-      const h2 = 7;
+      const h1 = 12; // Увеличена высота для более крупных шрифтов
+      const h2 = 8;
       const totalH = h1 + h2;
       const white = [255, 255, 255];
 
@@ -173,7 +170,7 @@ export const exportToPDF = async (data: TableData) => {
     };
 
     const calculateRowHeight = (row: TableRow, bIdx: number) => {
-      let maxH = 6.5; // Minimum row height matching UI's "tight" look
+      let maxH = 6.0; 
       row.cells.forEach((cell, i) => {
         const isNumeric = i >= 7;
         const fs = cell.style?.fontSize || (isNumeric ? UI_UNITS.numericFontSize : UI_UNITS.standardFontSize);
@@ -188,10 +185,9 @@ export const exportToPDF = async (data: TableData) => {
     const drawRow = (row: TableRow, isTotal: boolean, bodyIdx: number) => {
       const rowHeight = calculateRowHeight(row, bodyIdx);
 
-      // Handle page break
       if (currentY + rowHeight > A3_HEIGHT_MM - margin - 5) {
         doc.addPage();
-        currentY = margin + 15;
+        currentY = margin;
         drawHeader();
       }
 
@@ -211,18 +207,23 @@ export const exportToPDF = async (data: TableData) => {
         doc.rect(curX, currentY, colWidthsMm[i], rowHeight, 'D');
         const isNumeric = i >= 7;
         const fs = cell.style?.fontSize || (isNumeric ? UI_UNITS.numericFontSize : UI_UNITS.standardFontSize);
+        const circleSize = cell.style?.circleSize || (fs * 1.6);
         const val = (i === 0 && cell.value === 'AUTO') ? (bodyIdx + 1).toString() : cell.value;
         const isBold = isTotal || isNumeric || cell.style?.fontWeight === 700;
         const textColor = isTotal ? [255, 255, 255] : [0, 0, 0];
         
         if (i === 0 && !isTotal) {
-          const circleCol = hexToRgb(cell.style?.circleColor || '#3b82f6');
+          const hexColor = (cell.style?.circleColor || '#1c9ad6').toLowerCase();
+          const circleCol = hexToRgb(hexColor);
           doc.setFillColor(circleCol[0], circleCol[1], circleCol[2]);
-          const radius = 1.8;
+          const radius = circleSize / 2;
           doc.circle(curX + colWidthsMm[i] / 2, currentY + rowHeight / 2, radius, 'F');
-          renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs * 0.85, 'center', true, [255, 255, 255]);
+          
+          const isBlackText = ['#f1a98c', '#f5d38f'].includes(hexColor);
+          renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs, 'center', true, isBlackText ? [0, 0, 0] : [255, 255, 255]);
         } else {
-          const align = [1, 2, 4, 5].includes(i) ? 'left' : 'center';
+          // 5-я колонка (индекс 4) - по левому краю с отступом, остальные - по центру
+          const align = i === 4 ? 'left' : 'center';
           renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs, align, isBold, textColor);
         }
         curX += colWidthsMm[i];
@@ -231,35 +232,12 @@ export const exportToPDF = async (data: TableData) => {
       currentY += rowHeight;
     };
 
-    // Header Title Area
-    doc.setTextColor(0, 0, 0);
-    doc.setFont(fontName, 'bold');
-    doc.setFontSize(mmToPt(5));
-    doc.text('ПРИЛОЖЕНИЕ № 1', margin, margin + 8);
-    doc.setFontSize(mmToPt(3.5));
-    doc.text('ВЕДОМОСТЬ ОБЪЕКТОВ МОДЕРНИЗАЦИИ', margin, margin + 13);
-    
-    doc.setFillColor(0, 0, 0);
-    doc.rect(A3_WIDTH_MM - margin - 18, margin, 18, 4, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(mmToPt(2.5));
-    doc.text('ФОРМАТ А3', A3_WIDTH_MM - margin - 16, margin + 2.8);
-
     drawHeader();
 
     let bIdx = 0;
-    // We sort or separate Total row to bottom if that's preferred, but here we follow UI order.
-    // Usually total is first or last. In constants it is first.
     data.rows.forEach(row => {
       drawRow(row, !!row.isTotal, row.isTotal ? -1 : bIdx++);
     });
-
-    // Page numbers and footer
-    doc.setTextColor(180, 180, 180);
-    doc.setFont(fontName, 'normal');
-    doc.setFontSize(mmToPt(2.5));
-    doc.text('Лист 1 из 1', A3_WIDTH_MM - margin, A3_HEIGHT_MM - margin + 2, { align: 'right' });
-    doc.text('Vector Studio • (A3 420x297mm)', margin, A3_HEIGHT_MM - margin + 2);
 
     doc.save('ведомость_модернизации_А3.pdf');
   } catch (error) {

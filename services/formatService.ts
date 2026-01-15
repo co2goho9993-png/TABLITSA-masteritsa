@@ -7,6 +7,7 @@
  * 4. Non-breaking spaces after prepositions and before brackets.
  * 5. Protection of parenthetical expressions from breaking.
  * 6. "Elochki" quotes and double space removal.
+ * 7. Superscript for m2 and m3 units.
  */
 export const formatRussianText = (text: string): string => {
   if (!text || typeof text !== 'string') return text;
@@ -18,6 +19,10 @@ export const formatRussianText = (text: string): string => {
   if (formatted === '-') {
     return '–';
   }
+
+  // 0. Rule for units: м2 -> м², м3 -> м³
+  formatted = formatted.replace(/м2(\b|$)/g, 'м²');
+  formatted = formatted.replace(/м3(\b|$)/g, 'м³');
 
   // 1. Quotes "..." -> «...»
   // Heuristic: " at start or after space/bracket is open «, otherwise is close »
