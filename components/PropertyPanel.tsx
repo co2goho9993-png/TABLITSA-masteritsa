@@ -10,7 +10,10 @@ interface PropertyPanelProps {
 }
 
 export const PropertyPanel: React.FC<PropertyPanelProps> = ({ data, selection, onUpdateStyle }) => {
-  const selectedCell = selection ? data.rows[selection.rowIdx].cells[selection.colIdx] : null;
+  // Defensive access to current selection
+  const isHeader = selection && selection.rowIdx < 0;
+  const selectedRow = selection && !isHeader ? data.rows[selection.rowIdx] : null;
+  const selectedCell = selectedRow ? selectedRow.cells[selection!.colIdx] : null;
 
   if (!selection) return (
     <div className="w-64 bg-[#1a1a1a] border-l border-white/10 p-6 flex flex-col gap-4">
@@ -20,6 +23,20 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ data, selection, o
       </div>
     </div>
   );
+
+  if (isHeader) return (
+    <div className="w-64 bg-[#1a1a1a] border-l border-white/10 p-6 flex flex-col gap-6 shadow-2xl z-50">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-500">Заголовок</h3>
+        <span className="text-[8px] text-gray-500 uppercase font-bold">Ячейка шапки</span>
+      </div>
+      <div className="flex-1 flex items-center justify-center text-gray-600 text-[10px] uppercase font-bold text-center italic">
+        Редактирование стиля шапки ограничено стандартами
+      </div>
+    </div>
+  );
+
+  if (!selectedCell) return null;
 
   const isFirstCol = selection.colIdx === 0;
   const currentFontSize = selectedCell?.style?.fontSize || (selection.colIdx >= 7 ? 3.8 : 3.1);
@@ -98,7 +115,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ data, selection, o
                 key={weight}
                 onClick={() => onUpdateStyle({ fontWeight: weight })}
                 className={`py-2 rounded border text-[10px] font-bold uppercase transition-all ${
-                  (selectedCell?.style?.fontWeight || (isFirstCol || selection.colIdx >= 7 || data.rows[selection.rowIdx].isTotal ? 700 : 400)) == weight
+                  (selectedCell?.style?.fontWeight || (isFirstCol || selection.colIdx >= 7 || data.rows[selection.rowIdx]?.isTotal ? 700 : 400)) == weight
                     ? 'bg-blue-600 border-blue-600 text-white'
                     : 'bg-transparent border-white/10 text-gray-400 hover:border-white/20'
                 }`}

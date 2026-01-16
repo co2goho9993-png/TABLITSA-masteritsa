@@ -5,7 +5,7 @@ import { A3_WIDTH_MM, A3_HEIGHT_MM, MARGIN_MM, COLORS } from '../constants';
 import { formatRussianText } from './formatService';
 
 /**
- * World-class PDF Export Service with precise unit matching.
+ * World-class PDF Export Service with precise unit matching and fixed header proportions.
  */
 
 const FONT_SOURCES = {
@@ -20,13 +20,13 @@ const FONT_SOURCES = {
 };
 
 const UI_UNITS = {
-  headerFontSize: 3.1, // Увеличено с 2.6 до 3.1 для фиксации и читаемости
+  headerFontSize: 2.6, // Фиксированный размер шрифта шапки (как в UI)
   standardFontSize: 3.1, 
   numericFontSize: 3.8, 
-  cellPadding: 0.8, // Немного увеличен отступ для лучшей читаемости
-  headerPadding: 0.6, 
+  cellPadding: 0.8, 
+  headerPadding: 0.4, 
   borderWidth: 0.1, 
-  lineHeight: 1.05 
+  lineHeight: 1.0 
 };
 
 async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
@@ -96,7 +96,7 @@ export const exportToPDF = async (data: TableData) => {
     const totalBg = hexToRgb(COLORS.totalBg);
     const rowOddBg = hexToRgb(COLORS.rowOdd);
 
-    let currentY = margin; // Начинаем таблицу от верхней границы поля
+    let currentY = margin;
 
     const mmToPt = (mm: number) => mm * (72 / 25.4);
 
@@ -120,9 +120,10 @@ export const exportToPDF = async (data: TableData) => {
       
       const lines = doc.splitTextToSize(formatted, w - (padding * 2));
       const lineH = fontSizeMm * UI_UNITS.lineHeight;
-      const totalH = lines.length * lineH;
+      const totalTextH = lines.length * lineH;
       
-      let startY = y + (h - totalH) / 2 + (fontSizeMm * 0.78);
+      // Вертикальное центрирование
+      let startY = y + (h - totalTextH) / 2 + (fontSizeMm * 0.78);
 
       lines.forEach((line: string, i: number) => {
         const tw = doc.getTextWidth(line);
@@ -135,8 +136,8 @@ export const exportToPDF = async (data: TableData) => {
       doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
       doc.setLineWidth(UI_UNITS.borderWidth);
       
-      const h1 = 12; // Увеличена высота для более крупных шрифтов
-      const h2 = 8;
+      const h1 = 8.0; 
+      const h2 = 6.0;
       const totalH = h1 + h2;
       const white = [255, 255, 255];
 
@@ -174,10 +175,21 @@ export const exportToPDF = async (data: TableData) => {
       row.cells.forEach((cell, i) => {
         const isNumeric = i >= 7;
         const fs = cell.style?.fontSize || (isNumeric ? UI_UNITS.numericFontSize : UI_UNITS.standardFontSize);
+        
+        // 1. Ensure circle fits without clipping
+        if (i === 0 && !row.isTotal) {
+          const circleSizeMm = cell.style?.circleSize || (fs * 1.6);
+          // High buffer padding for the circle (x2.5 padding)
+          const requiredCircleH = circleSizeMm + (UI_UNITS.cellPadding * 2.5);
+          if (requiredCircleH > maxH) maxH = requiredCircleH;
+        }
+
+        // 2. Ensure multi-line text fits
         const val = (i === 0 && cell.value === 'AUTO') ? (bIdx + 1).toString() : cell.value;
-        const lines = doc.splitTextToSize(formatRussianText(val || ''), colWidthsMm[i] - (UI_UNITS.cellPadding * 2));
-        const h = lines.length * (fs * UI_UNITS.lineHeight) + (UI_UNITS.cellPadding * 1.5);
-        if (h > maxH) maxH = h;
+        const formatted = formatRussianText(val || '');
+        const lines = doc.splitTextToSize(formatted, colWidthsMm[i] - (UI_UNITS.cellPadding * 2));
+        const textH = lines.length * (fs * UI_UNITS.lineHeight) + (UI_UNITS.cellPadding * 3.0); // Increased padding
+        if (textH > maxH) maxH = textH;
       });
       return maxH;
     };
@@ -218,11 +230,8 @@ export const exportToPDF = async (data: TableData) => {
           doc.setFillColor(circleCol[0], circleCol[1], circleCol[2]);
           const radius = circleSize / 2;
           doc.circle(curX + colWidthsMm[i] / 2, currentY + rowHeight / 2, radius, 'F');
-          
-          const isBlackText = ['#f1a98c', '#f5d38f'].includes(hexColor);
-          renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs, 'center', true, isBlackText ? [0, 0, 0] : [255, 255, 255]);
+          renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs, 'center', true, [255, 255, 255]);
         } else {
-          // 5-я колонка (индекс 4) - по левому краю с отступом, остальные - по центру
           const align = i === 4 ? 'left' : 'center';
           renderCellText(curX, currentY, colWidthsMm[i], rowHeight, val, fs, align, isBold, textColor);
         }
@@ -233,7 +242,6 @@ export const exportToPDF = async (data: TableData) => {
     };
 
     drawHeader();
-
     let bIdx = 0;
     data.rows.forEach(row => {
       drawRow(row, !!row.isTotal, row.isTotal ? -1 : bIdx++);

@@ -50,6 +50,7 @@ const createCells = (values: string[]) => values.map((v, i) => ({
 
 export const INITIAL_DATA: TableData = {
   columns: INITIAL_COLUMNS,
+  groupTitle: 'Мощность ОПН',
   rows: [
     {
       id: 'total',
@@ -69,4 +70,4 @@ export const INITIAL_DATA: TableData = {
 
 export const A3_WIDTH_MM = 420;
 export const A3_HEIGHT_MM = 297;
-export const MARGIN_MM = 3; // Уменьшено на 80% от 15мм
+export const MARGIN_MM = 3;

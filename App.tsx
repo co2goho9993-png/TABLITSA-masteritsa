@@ -5,7 +5,7 @@ import { PropertyPanel } from './components/PropertyPanel';
 import { INITIAL_DATA, A3_WIDTH_MM, A3_HEIGHT_MM, MARGIN_MM } from './constants';
 import { TableData, Selection, TableCellStyle, TableRow } from './types';
 import { exportToPDF } from './services/pdfService';
-import { FileDown, Upload } from 'lucide-react';
+import { FileDown, Upload, Save, FolderOpen } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const EXCLUDED_TITLES = [
@@ -40,92 +40,44 @@ const formatToFixed1 = (val: string): string => {
   return val;
 };
 
-const cleanText = (text: string): string => {
-  if (!text) return '';
-  return text.toString().replace(/\s{2,}/g, ' ').trim();
-};
-
 const App: React.FC = () => {
   const [data, setData] = useState<TableData>(INITIAL_DATA);
   const [selection, setSelection] = useState<Selection>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
   const basePxPerMm = 3.78;
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const posRef = useRef({ x: 0, y: 0 });
-  const selectionRef = useRef<Selection>(null);
-
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!selectionRef.current) return;
-      const { rowIdx, colIdx } = selectionRef.current;
-      const rowCount = data.rows.length;
-      const colCount = data.columns.length;
-      let nextRow = rowIdx;
-      let nextCol = colIdx;
-      let prevent = false;
-
-      if (e.shiftKey) {
-        switch (e.key) {
-          case 'ArrowUp': 
-            nextRow = Math.max(0, rowIdx - 1); 
-            prevent = true; 
-            break;
-          case 'ArrowDown': 
-            nextRow = Math.min(rowCount - 1, rowIdx + 1); 
-            prevent = true; 
-            break;
-          case 'ArrowLeft': 
-            nextCol = Math.max(0, colIdx - 1); 
-            prevent = true; 
-            break;
-          case 'ArrowRight': 
-            nextCol = Math.min(colCount - 1, colIdx + 1); 
-            prevent = true; 
-            break;
-        }
-      }
-
-      if (prevent) { 
-        e.preventDefault(); 
-        setSelection({ rowIdx: nextRow, colIdx: nextCol }); 
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [data.rows.length, data.columns.length]);
+  const resizingRef = useRef(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !isSpacePressed) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-          setIsSpacePressed(true);
-          if (containerRef.current) containerRef.current.style.cursor = 'grab';
-        }
+      if (e.key === 'Shift' && !isShiftPressed) {
+        setIsShiftPressed(true);
+        if (containerRef.current) containerRef.current.style.cursor = 'grab';
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        setIsSpacePressed(false);
+      if (e.key === 'Shift') {
+        setIsShiftPressed(false);
         if (containerRef.current) containerRef.current.style.cursor = 'auto';
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
     };
-  }, [isSpacePressed]);
+  }, [isShiftPressed]);
 
   useEffect(() => { zoomRef.current = zoom; posRef.current = position; }, [zoom, position]);
-  useEffect(() => { selectionRef.current = selection; }, [selection]);
 
   useEffect(() => {
     const handleInitialFit = () => {
@@ -206,12 +158,10 @@ const App: React.FC = () => {
           isTotal,
           cells: data.columns.map((_, cIdx) => {
             let val = row[cIdx]?.toString() || "";
-            val = cleanText(val);
 
-            // Rule for Column 4 (index 3) capitalization
             if (cIdx === 3) {
-              if (val.toLowerCase() === 'да') val = 'Да';
-              if (val.toLowerCase() === 'нет') val = 'Нет';
+              if (val.toLowerCase().trim() === 'да') val = 'Да';
+              if (val.toLowerCase().trim() === 'нет') val = 'Нет';
             }
 
             if (NUMERIC_COLUMNS.includes(cIdx)) val = formatToFixed1(val);
@@ -226,7 +176,7 @@ const App: React.FC = () => {
             return {
               id: `cell-${Date.now()}-${rIdx}-${cIdx}`,
               value: (cIdx === 0) ? (isTotal ? "" : "AUTO") : val,
-              style: (cIdx === 0 && !isTotal) ? { circleColor: '#3b82f6' } : undefined
+              style: (cIdx === 0 && !isTotal) ? { circleColor: '#1c9ad6' } : undefined
             };
           })
         };
@@ -237,15 +187,47 @@ const App: React.FC = () => {
     reader.readAsBinaryString(file);
   };
 
-  const handleUpdateCell = (rowIdx: number, colIdx: number, value: string) => {
-    let val = cleanText(value);
-    
-    // Rule for Column 4 (index 3) capitalization
-    if (colIdx === 3) {
-      if (val.toLowerCase() === 'да') val = 'Да';
-      if (val.toLowerCase() === 'нет') val = 'Нет';
-    }
+  const handleSaveProject = () => {
+    const projectJson = JSON.stringify(data, null, 2);
+    const blob = new Blob([projectJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `project_${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
+  const handleLoadProject = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const content = evt.target?.result as string;
+        const loadedData = JSON.parse(content);
+        if (loadedData && loadedData.columns && loadedData.rows) {
+          setData(loadedData);
+          setSelection(null);
+        } else {
+          alert('Неверный формат файла проекта');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Ошибка при загрузке проекта');
+      }
+      if (projectInputRef.current) projectInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const handleUpdateCell = (rowIdx: number, colIdx: number, value: string) => {
+    let val = value;
+    if (colIdx === 3) {
+      if (val.toLowerCase().trim() === 'да') val = 'Да';
+      if (val.toLowerCase().trim() === 'нет') val = 'Нет';
+    }
+    if (!data.rows[rowIdx]) return;
     const isTotal = data.rows[rowIdx].isTotal;
     if (NUMERIC_COLUMNS.includes(colIdx)) val = formatToFixed1(val);
     if (colIdx === 12) {
@@ -258,9 +240,10 @@ const App: React.FC = () => {
   };
 
   const handleUpdateCellStyle = (rowIdx: number, colIdx: number, style: TableCellStyle) => {
+    if (rowIdx < 0) return; 
+    if (!data.rows[rowIdx]) return;
     const newData = { ...data };
     const currentCell = newData.rows[rowIdx].cells[colIdx];
-
     if (colIdx === 0) {
       if (style.fontSize !== undefined) {
         newData.rows.forEach(r => {
@@ -283,6 +266,9 @@ const App: React.FC = () => {
           }
         });
       }
+      if (style.circleColor !== undefined) {
+        currentCell.style = { ...currentCell.style, circleColor: style.circleColor };
+      }
     } else {
       if (style.fontSize !== undefined) {
         const isNumericCol = (idx: number) => idx >= 7;
@@ -302,59 +288,155 @@ const App: React.FC = () => {
     setData({ ...newData });
   };
 
+  const handleUpdateColumnTitle = (colIdx: number, title: string) => {
+    const newData = { ...data };
+    newData.columns[colIdx].title = title;
+    setData(newData);
+  };
+
+  const handleUpdateGroupTitle = (title: string) => {
+    setData({ ...data, groupTitle: title });
+  };
+
+  const handleAddRow = () => {
+    const existingBodyRow = data.rows.find(r => !r.isTotal);
+    const baseStyle = existingBodyRow?.cells[0]?.style || {};
+    const newRowStyle: TableCellStyle = {
+      ...baseStyle,
+      circleColor: '#1c9ad6' 
+    };
+    const newRow: TableRow = {
+      id: `r${Date.now()}`,
+      cells: data.columns.map((_, i) => ({
+        id: `c${Date.now()}${i}`,
+        value: i === 0 ? 'AUTO' : '',
+        style: i === 0 ? newRowStyle : undefined
+      }))
+    };
+    setData({ ...data, rows: [...data.rows, newRow] });
+  };
+
+  const handleResizeColumn = (idx: number, delta: number) => {
+    resizingRef.current = true;
+    const newData = { ...data };
+    if (idx + 1 < newData.columns.length) {
+      const actual = Math.max(Math.min(delta, newData.columns[idx + 1].width - 1), -(newData.columns[idx].width - 1));
+      newData.columns[idx].width += actual;
+      newData.columns[idx + 1].width -= actual;
+      setData(newData);
+    }
+  };
+
+  const handleDeleteRow = (idx: number) => {
+    const r = [...data.rows]; 
+    r.splice(idx, 1); 
+    setData({ ...data, rows: r }); 
+    setSelection(null);
+  };
+
+  const handleAddColumn = (at: number | undefined) => {
+    const newCol = { id: `c${Date.now()}`, title: 'Новый', width: 5 };
+    const cols = [...data.columns];
+    if (at !== undefined && at !== -1) cols.splice(at + 1, 0, newCol); 
+    else if (at === -1) cols.splice(8, 0, newCol); 
+    else cols.push(newCol);
+    const scale = 100 / cols.reduce((s, c) => s + c.width, 0);
+    cols.forEach(c => c.width *= scale);
+    const rows = data.rows.map(r => { 
+      const c = [...r.cells]; 
+      const cellId = `cc${Date.now()}-${Math.random()}`;
+      if (at !== undefined && at !== -1) c.splice(at + 1, 0, { id: cellId, value: '' }); 
+      else if (at === -1) c.splice(8, 0, { id: cellId, value: '' });
+      else c.push({ id: cellId, value: '' }); 
+      return { ...r, cells: c }; 
+    });
+    setData({ ...data, columns: cols, rows });
+  };
+
+  const handleDeleteColumn = (idx: number) => {
+    if (data.columns.length <= 1) return;
+    const cols = [...data.columns]; 
+    const delW = cols[idx].width; 
+    cols.splice(idx, 1);
+    const scale = 100 / (100 - delW); 
+    cols.forEach(c => c.width *= scale);
+    const rows = data.rows.map(r => { const c = [...r.cells]; c.splice(idx, 1); return { ...r, cells: c }; });
+    setData({ ...data, columns: cols, rows }); 
+    setSelection(null);
+  };
+
+  const handleSelect = (rIdx: number, cIdx: number) => {
+    if (selection?.rowIdx !== rIdx || selection?.colIdx !== cIdx) {
+      setSelection({ rowIdx: rIdx, colIdx: cIdx });
+    }
+  };
+
   const currentPxPerMm = basePxPerMm * zoom;
   return (
     <div className="flex h-screen bg-[#111111] overflow-hidden font-['Roboto_Condensed'] text-slate-100">
       <div ref={containerRef} className="flex-1 overflow-hidden relative select-none" onMouseDown={(e) => {
         const target = e.target as HTMLElement;
-        if (isSpacePressed || e.button === 1) {
+        if (isShiftPressed || e.button === 1) {
           setIsDragging(true);
           dragStartRef.current = { x: e.clientX - position.x, y: e.clientY - position.y };
           if (containerRef.current) containerRef.current.style.cursor = 'grabbing';
-        } else if (!target.closest('td') && !target.closest('button') && !target.closest('textarea')) setSelection(null);
+        } else if (!target.closest('td') && !target.closest('th') && !target.closest('button') && !target.closest('textarea') && !target.closest('.fixed')) {
+          setSelection(null);
+        }
       }} onMouseMove={(e) => isDragging && setPosition({ x: e.clientX - dragStartRef.current.x, y: e.clientY - dragStartRef.current.y })}
-      onMouseUp={() => { setIsDragging(false); if (containerRef.current) containerRef.current.style.cursor = isSpacePressed ? 'grab' : 'auto'; }}>
+      onMouseUp={() => { 
+        setIsDragging(false); 
+        resizingRef.current = false;
+        if (containerRef.current) containerRef.current.style.cursor = isShiftPressed ? 'grab' : 'auto'; 
+      }}>
         <div className="bg-white shadow-2xl absolute left-1/2 top-1/2 flex flex-col origin-center"
           style={{ width: `${A3_WIDTH_MM * currentPxPerMm}px`, height: `${A3_HEIGHT_MM * currentPxPerMm}px`, padding: `${MARGIN_MM * currentPxPerMm}px`, transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))` }}>
           <div className="w-full flex-1 relative overflow-visible">
-            <TableEditor data={data} selection={selection} onSelect={(r, c) => setSelection({ rowIdx: r, colIdx: c })} onUpdateCell={handleUpdateCell} pxPerMm={currentPxPerMm}
-              onResizeColumn={(idx, delta) => {
-                const newData = { ...data };
-                if (idx + 1 < newData.columns.length) {
-                  const actual = Math.max(Math.min(delta, newData.columns[idx + 1].width - 1), -(newData.columns[idx].width - 1));
-                  newData.columns[idx].width += actual;
-                  newData.columns[idx + 1].width -= actual;
-                  setData(newData);
-                }
-              }}
-              onAddRow={() => setData({ ...data, rows: [...data.rows, { id: `r${Date.now()}`, cells: data.columns.map((_, i) => ({ id: `c${Date.now()}${i}`, value: i === 0 ? 'AUTO' : '', style: i === 0 ? { circleColor: '#3b82f6' } : undefined })) }] })}
-              onDeleteRow={(idx) => { const r = [...data.rows]; r.splice(idx, 1); setData({ ...data, rows: r }); setSelection(null); }}
-              onAddColumn={(at) => {
-                const newCol = { id: `c${Date.now()}`, title: 'Новый', width: 5 };
-                const cols = [...data.columns];
-                if (at !== undefined) cols.splice(at + 1, 0, newCol); else cols.push(newCol);
-                const scale = 100 / cols.reduce((s, c) => s + c.width, 0);
-                cols.forEach(c => c.width *= scale);
-                const rows = data.rows.map(r => { const c = [...r.cells]; if (at !== undefined) c.splice(at + 1, 0, { id: `cc${Date.now()}`, value: '' }); else c.push({ id: `cc${Date.now()}`, value: '' }); return { ...r, cells: c }; });
-                setData({ columns: cols, rows });
-              }}
-              onDeleteColumn={(idx) => {
-                if (data.columns.length <= 1) return;
-                const cols = [...data.columns]; const delW = cols[idx].width; cols.splice(idx, 1);
-                const scale = 100 / (100 - delW); cols.forEach(c => c.width *= scale);
-                const rows = data.rows.map(r => { const c = [...r.cells]; c.splice(idx, 1); return { ...r, cells: c }; });
-                setData({ columns: cols, rows }); setSelection(null);
-              }}
+            <TableEditor 
+              data={data} 
+              selection={selection} 
+              onSelect={handleSelect} 
+              onUpdateCell={handleUpdateCell} 
+              onUpdateCellStyle={handleUpdateCellStyle}
+              onUpdateColumnTitle={handleUpdateColumnTitle}
+              onUpdateGroupTitle={handleUpdateGroupTitle}
+              pxPerMm={currentPxPerMm}
+              onResizeColumn={handleResizeColumn}
+              onAddRow={handleAddRow}
+              onDeleteRow={handleDeleteRow}
+              onAddColumn={handleAddColumn}
+              onDeleteColumn={handleDeleteColumn}
             />
           </div>
         </div>
         <div className="absolute top-8 left-8 bg-black/95 backdrop-blur-3xl px-5 py-3 rounded-2xl border border-white/10 text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-4 shadow-2xl pointer-events-none">
           <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></div><span>SCALE: {(zoom * 100).toFixed(0)}%</span>
         </div>
+        
+        {/* Панель управления проектом */}
         <div className="absolute bottom-8 left-8 flex flex-col gap-4">
-          <input type="file" ref={fileInputRef} onChange={handleImportExcel} accept=".xlsx, .xls" className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"><Upload size={32} /></button>
-          <button onClick={() => exportToPDF(data)} className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"><FileDown size={32} /></button>
+          <div className="flex gap-4">
+            <button 
+              onClick={handleSaveProject} 
+              title="Сохранить проект (.json)" 
+              className="w-16 h-16 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"
+            >
+              <Save size={32} />
+            </button>
+            <input type="file" ref={projectInputRef} onChange={handleLoadProject} accept=".json" className="hidden" />
+            <button 
+              onClick={() => projectInputRef.current?.click()} 
+              title="Загрузить проект (.json)" 
+              className="w-16 h-16 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"
+            >
+              <FolderOpen size={32} />
+            </button>
+          </div>
+          <div className="flex gap-4">
+            <input type="file" ref={fileInputRef} onChange={handleImportExcel} accept=".xlsx, .xls" className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} title="Импорт Excel" className="w-16 h-16 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"><Upload size={32} /></button>
+            <button onClick={() => exportToPDF(data)} title="Экспорт PDF" className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95"><FileDown size={32} /></button>
+          </div>
         </div>
       </div>
       <PropertyPanel data={data} selection={selection} onUpdateStyle={(style) => selection && handleUpdateCellStyle(selection.rowIdx, selection.colIdx, style)} />

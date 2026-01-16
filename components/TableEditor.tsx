@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState } from 'react';
-import { TableData, Selection } from '../types';
+import { TableData, Selection, TableCellStyle } from '../types';
 import { COLORS, A3_WIDTH_MM, MARGIN_MM, CIRCLE_PALETTE } from '../constants';
 import { formatRussianText } from '../services/formatService';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -10,11 +10,14 @@ interface TableEditorProps {
   selection: Selection;
   onSelect: (rowIdx: number, colIdx: number) => void;
   onUpdateCell: (rowIdx: number, colIdx: number, value: string) => void;
+  onUpdateCellStyle: (rowIdx: number, colIdx: number, style: TableCellStyle) => void;
   onResizeColumn: (colIdx: number, deltaPercent: number) => void;
   onAddRow: () => void;
   onDeleteRow: (idx: number) => void;
   onAddColumn: (atIdx?: number) => void;
   onDeleteColumn: (idx: number) => void;
+  onUpdateColumnTitle: (colIdx: number, title: string) => void;
+  onUpdateGroupTitle: (title: string) => void;
   pxPerMm: number;
 }
 
@@ -23,11 +26,14 @@ export const TableEditor: React.FC<TableEditorProps> = ({
   selection, 
   onSelect, 
   onUpdateCell, 
+  onUpdateCellStyle,
   onResizeColumn,
   onAddRow,
   onDeleteRow,
   onAddColumn,
   onDeleteColumn,
+  onUpdateColumnTitle,
+  onUpdateGroupTitle,
   pxPerMm 
 }) => {
   const activeInputRef = useRef<HTMLTextAreaElement>(null);
@@ -49,9 +55,10 @@ export const TableEditor: React.FC<TableEditorProps> = ({
     if (selection && activeInputRef.current) {
       const textarea = activeInputRef.current;
       textarea.focus();
-      textarea.style.height = '0px';
+      textarea.style.height = 'auto';
       textarea.style.height = `${textarea.scrollHeight}px`;
-      textarea.select();
+      // Put cursor at the end
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     }
   }, [selection?.rowIdx, selection?.colIdx]);
 
@@ -100,27 +107,67 @@ export const TableEditor: React.FC<TableEditorProps> = ({
   const handleColorSelect = (color: string) => {
     if (colorPickerAnchor) {
       const { rowIdx } = colorPickerAnchor;
-      const newData = { ...data };
-      const cell = newData.rows[rowIdx].cells[0];
-      cell.style = { ...cell.style, circleColor: color };
-      onUpdateCell(rowIdx, 0, cell.value); 
+      onUpdateCellStyle(rowIdx, 0, { circleColor: color });
       setColorPickerAnchor(null);
     }
   };
 
+  const renderEditableHeaderCell = (idx: number, isGroup?: boolean) => {
+    // rowIdx = -1: Regular columns
+    // rowIdx = -2: Group title
+    const rowIdx = isGroup ? -2 : -1;
+    const isSelected = selection?.rowIdx === rowIdx && selection?.colIdx === idx;
+    const value = isGroup ? (data.groupTitle || '') : data.columns[idx].title;
+
+    return isSelected ? (
+      <textarea
+        ref={activeInputRef}
+        value={value}
+        onKeyDown={(e) => {
+          if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
+        }}
+        onChange={(e) => {
+          if (isGroup) onUpdateGroupTitle(e.target.value);
+          else onUpdateColumnTitle(idx, e.target.value);
+          e.target.style.height = 'auto';
+          e.target.style.height = `${e.target.scrollHeight}px`;
+        }}
+        className="w-full bg-transparent outline-none resize-none overflow-hidden font-inherit border-none caret-white block"
+        style={{
+          padding: '0px',
+          fontSize: `${baseHeaderFontSize}px`,
+          fontWeight: 'bold',
+          textAlign: 'center',
+          lineHeight: 'inherit',
+          color: '#FFFFFF',
+          height: 'auto',
+          minHeight: '1em'
+        }}
+      />
+    ) : (
+      <span className="relative z-0 block whitespace-pre-wrap">
+        {formatRussianText(value)}
+      </span>
+    );
+  };
+
   const renderHeader = () => {
-    const commonStyle = {
-      borderColor: COLORS.border,
-      borderWidth: `${borderWidth}px`, 
-      color: '#FFFFFF',
-      lineHeight: '1.05',
-      whiteSpace: 'pre-wrap' as const,
-      wordBreak: 'keep-all' as const,
-      textAlign: 'center' as const,
-      fontSize: `${baseHeaderFontSize}px`
+    const commonStyle = (idx: number, isGroup?: boolean) => {
+      const rowIdx = isGroup ? -2 : -1;
+      const isSelected = selection?.rowIdx === rowIdx && selection?.colIdx === idx;
+      return {
+        borderColor: COLORS.border,
+        borderWidth: `${borderWidth}px`, 
+        color: '#FFFFFF',
+        lineHeight: '1.05',
+        textAlign: 'center' as const,
+        fontSize: `${baseHeaderFontSize}px`,
+        outline: isSelected ? `${borderWidth * 3}px solid #3B82F6` : 'none',
+        outlineOffset: `-${borderWidth * 1.5}px`
+      };
     };
 
-    const thClass = "text-center font-bold align-middle border relative group/th";
+    const thClass = "text-center font-bold align-middle border relative group/th cursor-pointer";
 
     const renderColControls = (idx: number) => (
       <div 
@@ -154,13 +201,24 @@ export const TableEditor: React.FC<TableEditorProps> = ({
       <thead style={{ overflow: 'visible' }}>
         <tr style={{ backgroundColor: COLORS.headerBg, overflow: 'visible' }}>
           {data.columns.slice(0, 8).map((col, idx) => (
-            <th key={col.id} rowSpan={2} className={thClass} style={{ ...commonStyle, width: `${col.width}%`, padding: `${headerPadding}px` }}>
-              {formatRussianText(col.title)}
+            <th 
+              key={col.id} 
+              rowSpan={2} 
+              className={thClass} 
+              onClick={(e) => { e.stopPropagation(); onSelect(-1, idx); }}
+              style={{ ...commonStyle(idx), width: `${col.width}%`, padding: `${headerPadding}px` }}
+            >
+              {renderEditableHeaderCell(idx)}
               {renderColControls(idx)}
             </th>
           ))}
-          <th colSpan={2} className={thClass} style={{ ...commonStyle, width: `${data.columns[8].width + data.columns[9].width}%`, padding: `${headerPadding}px` }}>
-            {formatRussianText('Мощность ОПН')}
+          <th 
+            colSpan={2} 
+            className={thClass} 
+            onClick={(e) => { e.stopPropagation(); onSelect(-2, 8); }}
+            style={{ ...commonStyle(8, true), width: `${data.columns[8].width + data.columns[9].width}%`, padding: `${headerPadding}px` }}
+          >
+            {renderEditableHeaderCell(8, true)}
             <button 
               onClick={(e) => { e.stopPropagation(); onAddColumn(-1); }}
               className="absolute -right-4 top-1/2 -translate-y-1/2 bg-blue-600 text-white rounded-full hover:bg-blue-700 shadow-lg z-[120] flex items-center justify-center transform hover:scale-125 transition-transform"
@@ -169,20 +227,37 @@ export const TableEditor: React.FC<TableEditorProps> = ({
               <Plus size={2.8 * pxPerMm} strokeWidth={4} />
             </button>
           </th>
-          {data.columns.slice(10).map((col, idx) => (
-            <th key={col.id} rowSpan={2} className={thClass} style={{ ...commonStyle, width: `${col.width}%`, padding: `${headerPadding}px` }}>
-              {formatRussianText(col.title)}
-              {renderColControls(idx + 10)}
-            </th>
-          ))}
+          {data.columns.slice(10).map((col, idx) => {
+            const actualIdx = idx + 10;
+            return (
+              <th 
+                key={col.id} 
+                rowSpan={2} 
+                className={thClass} 
+                onClick={(e) => { e.stopPropagation(); onSelect(-1, actualIdx); }}
+                style={{ ...commonStyle(actualIdx), width: `${col.width}%`, padding: `${headerPadding}px` }}
+              >
+                {renderEditableHeaderCell(actualIdx)}
+                {renderColControls(actualIdx)}
+              </th>
+            );
+          })}
         </tr>
         <tr style={{ backgroundColor: COLORS.headerBg, overflow: 'visible' }}>
-          <th className={thClass} style={{ ...commonStyle, width: `${data.columns[8].width}%`, padding: `${headerPadding}px` }}>
-            {formatRussianText(data.columns[8].title)}
+          <th 
+            className={thClass} 
+            onClick={(e) => { e.stopPropagation(); onSelect(-1, 8); }}
+            style={{ ...commonStyle(8), width: `${data.columns[8].width}%`, padding: `${headerPadding}px` }}
+          >
+            {renderEditableHeaderCell(8)}
             {renderColControls(8)}
           </th>
-          <th className={thClass} style={{ ...commonStyle, width: `${data.columns[9].width}%`, padding: `${headerPadding}px` }}>
-            {formatRussianText(data.columns[9].title)}
+          <th 
+            className={thClass} 
+            onClick={(e) => { e.stopPropagation(); onSelect(-1, 9); }}
+            style={{ ...commonStyle(9), width: `${data.columns[9].width}%`, padding: `${headerPadding}px` }}
+          >
+            {renderEditableHeaderCell(9)}
             {renderColControls(9)}
           </th>
         </tr>
@@ -226,8 +301,8 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                   {row.cells.map((cell, cIdx) => {
                     const isSelected = selection?.rowIdx === rIdx && selection?.colIdx === cIdx;
                     const isNumericCol = cIdx >= 7;
-                    const isPeriodCol = cIdx === 10;
                     const isFirstCol = cIdx === 0 && !row.isTotal;
+                    const isLastCol = cIdx === data.columns.length - 1;
                     
                     const cellValue = isFirstCol && cell.value === 'AUTO' ? getRowNumber(rIdx).toString() : cell.value;
                     
@@ -235,14 +310,13 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                     const currentCircleSize = (cell.style?.circleSize ? cell.style.circleSize * pxPerMm : currentFontSize * 1.6);
                     const fontWeight = cell.style?.fontWeight || (isNumericCol || row.isTotal ? '700' : '400');
                     
-                    // Column 5 (index 4) is left-aligned, others are center
                     const textAlign = cIdx === 4 ? 'left' : 'center';
 
                     return (
                       <td
                         key={cell.id}
                         onClick={(e) => { e.stopPropagation(); onSelect(rIdx, cIdx); }}
-                        className={`leading-tight border cursor-pointer relative ${
+                        className={`leading-tight border cursor-pointer relative group/cell ${
                           isSelected ? 'bg-[#333333]' : ''
                         }`}
                         style={{ 
@@ -254,8 +328,8 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                           borderWidth: `${borderWidth}px`,
                           color: row.isTotal ? COLORS.totalText : (isSelected ? '#f0f0f0' : COLORS.text),
                           padding: `${cellPadding}px`, 
-                          whiteSpace: isPeriodCol ? 'nowrap' : 'normal',
-                          wordBreak: isPeriodCol ? 'keep-all' : 'break-word',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
                           overflow: 'visible'
                         }}
                       >
@@ -269,7 +343,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                                   width: `${currentCircleSize}px`,
                                   height: `${currentCircleSize}px`,
                                   fontSize: `${currentFontSize}px`,
-                                  color: ['#f1a98c', '#f5d38f'].includes((cell.style?.circleColor || '').toLowerCase()) ? '#000000' : '#FFFFFF'
+                                  color: '#FFFFFF'
                                 }}
                              >
                                {cellValue}
@@ -280,13 +354,11 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                             ref={activeInputRef}
                             value={cellValue}
                             onKeyDown={(e) => {
-                              if (e.key === ' ' || e.key === 'Enter') {
-                                e.stopPropagation();
-                              }
+                              if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
                             }}
                             onChange={(e) => {
                               onUpdateCell(rIdx, cIdx, e.target.value);
-                              e.target.style.height = '0px';
+                              e.target.style.height = 'auto';
                               e.target.style.height = `${e.target.scrollHeight}px`;
                             }}
                             className="w-full bg-transparent outline-none resize-none overflow-hidden font-inherit border-none caret-blue-400 block"
@@ -306,6 +378,20 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                             {formatRussianText(cellValue)}
                           </span>
                         )}
+
+                        {!isLastCol && (
+                          <div 
+                            onMouseDown={(e) => handleMouseDownResizer(e, cIdx)}
+                            className="absolute right-0 top-0 bottom-0 z-[50] group-hover/cell:opacity-100 opacity-0 transition-opacity flex items-center justify-center"
+                            style={{ width: `${4 * pxPerMm}px`, cursor: 'col-resize', transform: 'translateX(50%)' }}
+                          >
+                            <div 
+                              className="w-[2px] h-[80%] bg-blue-500/60 rounded-full shadow-lg"
+                              style={{ height: 'calc(100% - 4px)' }}
+                            />
+                          </div>
+                        )}
+
                         {isSelected && (
                           <div 
                             className="absolute pointer-events-none z-[60]" 

@@ -28,6 +28,7 @@ export interface TableColumn {
 export interface TableData {
   columns: TableColumn[];
   rows: TableRow[];
+  groupTitle?: string;
 }
 
 export type Selection = {
