@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { TableData, Selection, TableCellStyle } from '../types';
-import { Bold, Plus, Minus, Type, Circle } from 'lucide-react';
+import { Bold, Plus, Minus, Type, Circle, Palette } from 'lucide-react';
+import { CIRCLE_PALETTE } from '../constants';
 
 interface PropertyPanelProps {
   data: TableData;
@@ -10,7 +11,6 @@ interface PropertyPanelProps {
 }
 
 export const PropertyPanel: React.FC<PropertyPanelProps> = ({ data, selection, onUpdateStyle }) => {
-  // Defensive access to current selection
   const isHeader = selection && selection.rowIdx < 0;
   const selectedRow = selection && !isHeader ? data.rows[selection.rowIdx] : null;
   const selectedCell = selectedRow ? selectedRow.cells[selection!.colIdx] : null;
@@ -44,7 +44,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ data, selection, o
   const isLinkedCol = !isFirstCol && selection.colIdx >= 1 && selection.colIdx <= 7;
 
   return (
-    <div className="w-64 bg-[#1a1a1a] border-l border-white/10 p-6 flex flex-col gap-6 shadow-2xl z-50">
+    <div className="w-64 bg-[#1a1a1a] border-l border-white/10 p-6 flex flex-col gap-6 shadow-2xl z-50 overflow-y-auto scrollbar-hide">
       <div className="flex flex-col gap-1">
         <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-500">Типографика</h3>
         <span className="text-[8px] text-gray-500 uppercase font-bold">Ячейка R{selection.rowIdx + 1}:C{selection.colIdx + 1}</span>
@@ -52,26 +52,56 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ data, selection, o
 
       <div className="space-y-6">
         {isFirstCol && (
-          <div className="flex flex-col gap-3">
-            <label className="text-[9px] font-bold uppercase text-gray-400 flex items-center gap-2">
-              <Circle size={12} className="text-gray-600" /> Диаметр кружка (мм)
-            </label>
-            <div className="flex items-center justify-between bg-black/40 rounded-lg p-1 border border-white/5">
-              <button 
-                onClick={() => onUpdateStyle({ circleSize: Math.max(1, currentCircleSize - 0.2) })}
-                className="p-2 hover:bg-white/5 rounded-md text-gray-400 hover:text-white transition-colors"
-              >
-                <Minus size={14} />
-              </button>
-              <span className="text-[11px] font-bold text-white tabular-nums">{currentCircleSize.toFixed(1)}</span>
-              <button 
-                onClick={() => onUpdateStyle({ circleSize: Math.min(30, currentCircleSize + 0.2) })}
-                className="p-2 hover:bg-white/5 rounded-md text-gray-400 hover:text-white transition-colors"
-              >
-                <Plus size={14} />
-              </button>
+          <>
+            <div className="flex flex-col gap-3">
+              <label className="text-[9px] font-bold uppercase text-gray-400 flex items-center gap-2">
+                <Palette size={12} className="text-gray-600" /> Цвет категории
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {CIRCLE_PALETTE.map((item) => (
+                  <button
+                    key={item.color}
+                    onClick={() => onUpdateStyle({ circleColor: item.color })}
+                    title={item.label}
+                    className={`w-full aspect-square rounded-full border-2 transition-all hover:scale-110 active:scale-95 flex items-center justify-center ${
+                      (selectedCell?.style?.circleColor || '#1c9ad6').toLowerCase() === item.color.toLowerCase()
+                        ? 'border-white scale-110 shadow-[0_0_10px_rgba(255,255,255,0.3)]'
+                        : 'border-transparent opacity-60 hover:opacity-100'
+                    }`}
+                    style={{ backgroundColor: item.color }}
+                  >
+                    {(selectedCell?.style?.circleColor || '#1c9ad6').toLowerCase() === item.color.toLowerCase() && (
+                      <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[8px] text-gray-500 uppercase font-bold tracking-tight bg-black/20 p-2 rounded italic">
+                {CIRCLE_PALETTE.find(i => i.color.toLowerCase() === (selectedCell?.style?.circleColor || '#1c9ad6').toLowerCase())?.label || 'Субсидия'}
+              </div>
             </div>
-          </div>
+
+            <div className="flex flex-col gap-3">
+              <label className="text-[9px] font-bold uppercase text-gray-400 flex items-center gap-2">
+                <Circle size={12} className="text-gray-600" /> Диаметр кружка (мм)
+              </label>
+              <div className="flex items-center justify-between bg-black/40 rounded-lg p-1 border border-white/5">
+                <button 
+                  onClick={() => onUpdateStyle({ circleSize: Math.max(1, currentCircleSize - 0.2) })}
+                  className="p-2 hover:bg-white/5 rounded-md text-gray-400 hover:text-white transition-colors"
+                >
+                  <Minus size={14} />
+                </button>
+                <span className="text-[11px] font-bold text-white tabular-nums">{currentCircleSize.toFixed(1)}</span>
+                <button 
+                  onClick={() => onUpdateStyle({ circleSize: Math.min(30, currentCircleSize + 0.2) })}
+                  className="p-2 hover:bg-white/5 rounded-md text-gray-400 hover:text-white transition-colors"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
+          </>
         )}
 
         <div className="flex flex-col gap-3">

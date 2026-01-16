@@ -53,23 +53,39 @@ export const formatRussianText = (text: string): string => {
   // 6. "№" always separated by a NON-BREAKING space from the number
   f = f.replace(/№(\s*)(\d)/g, '№\u00A0$2');
 
-  // 7. Dash rules
+  // 7. Parentheses and suffix protection (Fix for broken brackets like "(-ей)")
+  // Ensure short parentheticals stay with previous word
+  f = f.replace(/(\S)\s+\((?=.{1,12}\))/g, '$1\u00A0(');
+  
+  // Protect internal content of parentheses from breaking
+  // Especially suffixes like (-ей), (-ти), (я). 
+  // We use Word Joiner (\u2060) which is a zero-width non-breaking space.
+  f = f.replace(/\(([^)]+)\)/g, (match, content) => {
+    // Replace any dash inside with non-breaking hyphen
+    const protectedContent = content.replace(/-/g, '\u2011');
+    // Wrap with Word Joiners to keep bracket and content as one unbreakable unit
+    return `(\u2060${protectedContent}\u2060)`;
+  });
+
+  // Ensure no line break after opening parenthesis and before closing parenthesis (redundant but safe)
+  f = f.replace(/\(\s+/g, '(');
+  f = f.replace(/\s+\)/g, ')');
+
+  // 8. Dash rules
   // Years range: 2024-2030 -> 2024–2030 (en-dash)
   f = f.replace(/(\d{2,4})-(\d{2,4})/g, '$1–$2');
   // Long dash for space-hyphen-space -> nbsp-emdash-space
   f = f.replace(/(\s+)-(\s+)/g, '\u00A0— ');
   
-  // 8. Thousands separator (non-breaking space)
+  // 9. Thousands separator (non-breaking space)
   // We process numbers but exclude 4-digit years (starting with 19 or 20)
   const isYear = (numStr: string) => {
     return numStr.length === 4 && (numStr.startsWith('19') || numStr.startsWith('20'));
   };
 
-  // Improved regex for thousands that respects boundary and potential year exclusion
   f = f.replace(/\b\d{4,}\b/g, (match) => {
     if (isYear(match)) return match;
     
-    // Manual spacing for numbers larger than 999
     let res = '';
     for (let i = 0; i < match.length; i++) {
       if (i > 0 && (match.length - i) % 3 === 0) {

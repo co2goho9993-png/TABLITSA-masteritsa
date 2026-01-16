@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { TableData, Selection, TableCellStyle } from '../types';
-import { COLORS, A3_WIDTH_MM, MARGIN_MM, CIRCLE_PALETTE } from '../constants';
+import { COLORS, A3_WIDTH_MM, MARGIN_MM } from '../constants';
 import { formatRussianText } from '../services/formatService';
 import { Plus, Trash2, X } from 'lucide-react';
 
@@ -38,9 +38,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
 }) => {
   const activeInputRef = useRef<HTMLTextAreaElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
   const [resizingColIdx, setResizingColIdx] = useState<number | null>(null);
-  const [colorPickerAnchor, setColorPickerAnchor] = useState<{ rowIdx: number, x: number, y: number } | null>(null);
   const startXRef = useRef(0);
 
   const baseHeaderFontSize = 2.6 * pxPerMm; 
@@ -55,24 +53,9 @@ export const TableEditor: React.FC<TableEditorProps> = ({
     if (selection && activeInputRef.current) {
       const textarea = activeInputRef.current;
       textarea.focus();
-      textarea.style.height = 'auto';
-      textarea.style.height = `${textarea.scrollHeight}px`;
-      // Put cursor at the end
       textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     }
   }, [selection?.rowIdx, selection?.colIdx]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (colorPickerAnchor && colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
-        setColorPickerAnchor(null);
-      }
-    };
-    if (colorPickerAnchor) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [colorPickerAnchor]);
 
   const handleMouseDownResizer = (e: React.MouseEvent, colIdx: number) => {
     e.stopPropagation();
@@ -99,55 +82,54 @@ export const TableEditor: React.FC<TableEditorProps> = ({
     };
   }, [resizingColIdx, onResizeColumn, pxPerMm]);
 
-  const handleCircleClick = (e: React.MouseEvent, rowIdx: number) => {
-    e.stopPropagation();
-    setColorPickerAnchor({ rowIdx, x: e.clientX, y: e.clientY });
-  };
-
-  const handleColorSelect = (color: string) => {
-    if (colorPickerAnchor) {
-      const { rowIdx } = colorPickerAnchor;
-      onUpdateCellStyle(rowIdx, 0, { circleColor: color });
-      setColorPickerAnchor(null);
-    }
-  };
-
   const renderEditableHeaderCell = (idx: number, isGroup?: boolean) => {
-    // rowIdx = -1: Regular columns
-    // rowIdx = -2: Group title
     const rowIdx = isGroup ? -2 : -1;
     const isSelected = selection?.rowIdx === rowIdx && selection?.colIdx === idx;
     const value = isGroup ? (data.groupTitle || '') : data.columns[idx].title;
 
-    return isSelected ? (
-      <textarea
-        ref={activeInputRef}
-        value={value}
-        onKeyDown={(e) => {
-          if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
-        }}
-        onChange={(e) => {
-          if (isGroup) onUpdateGroupTitle(e.target.value);
-          else onUpdateColumnTitle(idx, e.target.value);
-          e.target.style.height = 'auto';
-          e.target.style.height = `${e.target.scrollHeight}px`;
-        }}
-        className="w-full bg-transparent outline-none resize-none overflow-hidden font-inherit border-none caret-white block"
-        style={{
-          padding: '0px',
-          fontSize: `${baseHeaderFontSize}px`,
-          fontWeight: 'bold',
-          textAlign: 'center',
-          lineHeight: 'inherit',
-          color: '#FFFFFF',
-          height: 'auto',
-          minHeight: '1em'
-        }}
-      />
-    ) : (
-      <span className="relative z-0 block whitespace-pre-wrap">
-        {formatRussianText(value)}
-      </span>
+    return (
+      <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+        <span 
+          className="whitespace-pre-wrap invisible pointer-events-none select-none"
+          style={{ 
+            fontSize: `${baseHeaderFontSize}px`,
+            lineHeight: '1.05',
+            padding: '0px',
+            display: 'block',
+            width: '100%'
+          }}
+        >
+          {formatRussianText(value) || ' '}
+        </span>
+        
+        {isSelected ? (
+          <textarea
+            ref={activeInputRef}
+            value={value}
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
+            }}
+            onChange={(e) => {
+              if (isGroup) onUpdateGroupTitle(e.target.value);
+              else onUpdateColumnTitle(idx, e.target.value);
+            }}
+            className="absolute inset-0 w-full h-full bg-transparent outline-none resize-none overflow-hidden font-inherit border-none caret-white block"
+            style={{
+              padding: '0px',
+              fontSize: `${baseHeaderFontSize}px`,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              lineHeight: '1.05',
+              color: '#FFFFFF',
+              margin: '0'
+            }}
+          />
+        ) : (
+          <span className="absolute inset-0 flex items-center justify-center text-center leading-[1.05] whitespace-pre-wrap px-0">
+             {formatRussianText(value)}
+          </span>
+        )}
+      </div>
     );
   };
 
@@ -159,11 +141,11 @@ export const TableEditor: React.FC<TableEditorProps> = ({
         borderColor: COLORS.border,
         borderWidth: `${borderWidth}px`, 
         color: '#FFFFFF',
-        lineHeight: '1.05',
         textAlign: 'center' as const,
         fontSize: `${baseHeaderFontSize}px`,
         outline: isSelected ? `${borderWidth * 3}px solid #3B82F6` : 'none',
-        outlineOffset: `-${borderWidth * 1.5}px`
+        outlineOffset: `-${borderWidth * 1.5}px`,
+        overflow: 'visible' as const
       };
     };
 
@@ -308,8 +290,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                     
                     let currentFontSize = (cell.style?.fontSize ? cell.style.fontSize * pxPerMm : (isNumericCol ? largerFontSize : standardFontSize));
                     const currentCircleSize = (cell.style?.circleSize ? cell.style.circleSize * pxPerMm : currentFontSize * 1.6);
-                    const fontWeight = cell.style?.fontWeight || (isNumericCol || row.isTotal ? '700' : '400');
-                    
+                    const fontWeight = cell.style?.fontWeight || (isFirstCol || isNumericCol || row.isTotal ? '700' : '400');
                     const textAlign = cIdx === 4 ? 'left' : 'center';
 
                     return (
@@ -328,55 +309,71 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                           borderWidth: `${borderWidth}px`,
                           color: row.isTotal ? COLORS.totalText : (isSelected ? '#f0f0f0' : COLORS.text),
                           padding: `${cellPadding}px`, 
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
                           overflow: 'visible'
                         }}
                       >
                         {isFirstCol ? (
                           <div className="flex items-center justify-center h-full w-full">
                              <div 
-                                onClick={(e) => handleCircleClick(e, rIdx)}
-                                className="rounded-full flex items-center justify-center font-bold shadow-sm hover:scale-110 transition-transform cursor-pointer leading-none"
+                                className="rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform cursor-pointer leading-none"
                                 style={{ 
                                   backgroundColor: cell.style?.circleColor || '#1c9ad6',
                                   width: `${currentCircleSize}px`,
                                   height: `${currentCircleSize}px`,
                                   fontSize: `${currentFontSize}px`,
+                                  fontWeight: fontWeight,
                                   color: '#FFFFFF'
                                 }}
                              >
                                {cellValue}
                              </div>
                           </div>
-                        ) : isSelected ? (
-                          <textarea
-                            ref={activeInputRef}
-                            value={cellValue}
-                            onKeyDown={(e) => {
-                              if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
-                            }}
-                            onChange={(e) => {
-                              onUpdateCell(rIdx, cIdx, e.target.value);
-                              e.target.style.height = 'auto';
-                              e.target.style.height = `${e.target.scrollHeight}px`;
-                            }}
-                            className="w-full bg-transparent outline-none resize-none overflow-hidden font-inherit border-none caret-blue-400 block"
-                            style={{
-                              padding: '0px',
-                              fontSize: `${currentFontSize}px`,
-                              fontWeight: 'inherit',
-                              textAlign: 'inherit',
-                              lineHeight: 'inherit',
-                              color: '#f0f0f0',
-                              height: 'auto',
-                              minHeight: '1em'
-                            }}
-                          />
                         ) : (
-                          <span className="relative z-0 block">
-                            {formatRussianText(cellValue)}
-                          </span>
+                          <div className="relative w-full h-full flex items-center overflow-hidden">
+                             <span 
+                               className="whitespace-pre-wrap invisible pointer-events-none select-none block w-full"
+                               style={{ 
+                                 lineHeight: '1.2',
+                                 padding: '0px',
+                                 fontSize: `${currentFontSize}px`
+                               }}
+                             >
+                               {formatRussianText(cellValue) || ' '}
+                             </span>
+
+                             {isSelected ? (
+                               <textarea
+                                 ref={activeInputRef}
+                                 value={cellValue}
+                                 onKeyDown={(e) => {
+                                   if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
+                                 }}
+                                 onChange={(e) => {
+                                   onUpdateCell(rIdx, cIdx, e.target.value);
+                                 }}
+                                 className="absolute inset-0 w-full h-full bg-transparent outline-none resize-none overflow-hidden font-inherit border-none caret-blue-400 block"
+                                 style={{
+                                   padding: '0px',
+                                   fontSize: `${currentFontSize}px`,
+                                   fontWeight: 'inherit',
+                                   textAlign: 'inherit',
+                                   lineHeight: '1.2',
+                                   color: '#f0f0f0',
+                                   margin: '0'
+                                 }}
+                               />
+                             ) : (
+                               <span 
+                                 className="absolute inset-0 flex items-center whitespace-pre-wrap break-words"
+                                 style={{ 
+                                   justifyContent: textAlign === 'left' ? 'flex-start' : 'center',
+                                   textAlign: textAlign
+                                 }}
+                               >
+                                 {formatRussianText(cellValue)}
+                               </span>
+                             )}
+                          </div>
                         )}
 
                         {!isLastCol && (
@@ -423,38 +420,6 @@ export const TableEditor: React.FC<TableEditorProps> = ({
             })}
           </tbody>
         </table>
-        
-        {colorPickerAnchor && (
-          <div 
-            ref={colorPickerRef}
-            className="fixed bg-[#1a1a1a] backdrop-blur-2xl p-5 rounded-2xl shadow-[0_25px_70px_-15px_rgba(0,0,0,0.8)] border border-white/10 flex flex-col gap-4 z-[200]"
-            style={{ 
-              left: `${colorPickerAnchor.x}px`, 
-              top: `${colorPickerAnchor.y}px`,
-              transform: 'translate(-50%, 15px)',
-              width: '320px'
-            }}
-          >
-            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 mb-1">Палитра категорий</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {CIRCLE_PALETTE.map(item => (
-                <button
-                  key={item.color}
-                  onClick={() => handleColorSelect(item.color)}
-                  className="flex items-center gap-3 group/btn text-left hover:bg-white/5 p-1 rounded-lg transition-colors"
-                >
-                  <div 
-                    className="w-6 h-6 rounded-full border border-white/10 group-hover/btn:scale-110 transition-transform shadow-md"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-[11px] font-bold text-gray-300 group-hover/btn:text-white transition-colors leading-none">
-                    {item.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         <div className="flex mt-2 justify-center" style={{ overflow: 'visible' }}>
           <button 
